@@ -1,0 +1,7 @@
+{
+  "name": "Core Elite Combine 2026",
+  "description": "Mobile-first athlete registration, wristband assignment, and station results tracking with offline sync.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
