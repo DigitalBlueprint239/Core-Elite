@@ -20,47 +20,95 @@ function logDevError(context: string, err: unknown) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// RPC error code -> public-safe UI message
+// Maps the structured codes returned by claim_band_atomic() to friendly text.
+// Internal codes are never rendered directly.
+// ---------------------------------------------------------------------------
+const RPC_ERROR_MESSAGES: Record<string, string> = {
+  invalid_token:      'This claim link is invalid. Please return to registration and try again.',
+  expired_token:      'This claim link has expired. Please return to registration to receive a new one.',
+  token_already_used: 'This registration link has already been used. If you need help, ask event staff.',
+  band_not_found:     'That wristband number was not found for this event.',
+  band_unavailable:   'This wristband is already assigned. Please scan a different one.',
+  athlete_not_found:  "We couldn't locate your athlete record. Please ask event staff for help.",
+  claim_failed:       "We're having trouble right now.",
+};
+
+// Token-level errors that should show the "invalid link" full-screen state
+// rather than an inline banner (because there is no valid athlete loaded yet).
+const LINK_LEVEL_CODES = new Set([
+  'invalid_token',
+  'expired_token',
+  'token_already_used',
+]);
+
+// ---------------------------------------------------------------------------
+// Link error full-screen UI map
+// ---------------------------------------------------------------------------
+const LINK_ERROR_UI: Record<string, { title: string; body: string }> = {
+  invalid_token: {
+    title: 'Invalid or missing link',
+    body: 'This claim link is invalid. Please return to registration and try again.',
+  },
+  expired_token: {
+    title: 'Link has expired',
+    body: 'This claim link has expired. Please return to registration to receive a new one.',
+  },
+  token_already_used: {
+    title: 'Wristband already claimed',
+    body: 'This registration link has already been used. If you need help, please ask event staff.',
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 export default function ClaimBand() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const token = searchParams.get('athleteToken');
 
   const [athlete, setAthlete] = useState<any>(null);
+  // linkError holds a code from LINK_ERROR_UI -- shown before athlete is loaded
+  const [linkError, setLinkError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  // error is always a public-safe string — never a raw DB message
-  const [error, setError] = useState<string | null>(null);
+  // claimError is an inline public-safe string shown after a failed claim attempt
+  const [claimError, setClaimError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const [assignedBand, setAssignedBand] = useState<any>(null);
+  const [assignedBand, setAssignedBand] = useState<{ display_number: number; band_id: string } | null>(null);
   const [manualEntry, setManualEntry] = useState(false);
   const [bandNumber, setBandNumber] = useState('');
 
+  // -------------------------------------------------------------------------
+  // On mount: validate the token and load the athlete.
+  // This is still a client-side read -- we only need to confirm the token is
+  // valid and load the athlete's name for display. The actual mutation is
+  // handled by the RPC.
+  // -------------------------------------------------------------------------
   useEffect(() => {
-    // Missing token — friendly invalid-link message, no technical detail
     if (!token) {
-      setError('invalid-link');
+      setLinkError('invalid_token');
       setLoading(false);
       return;
     }
 
     async function fetchClaim() {
-      const { data: claim, error: claimError } = await supabase
+      const { data: claim, error: claimErr } = await supabase
         .from('token_claims')
         .select('*, athletes(*)')
         .eq('token_hash', token)
         .single();
 
-      if (claimError) {
-        // Log the real error in dev; show only a safe message publicly
-        logDevError('fetchClaim › token lookup', claimError);
-        setError('invalid-link');
+      if (claimErr) {
+        logDevError('fetchClaim token lookup', claimErr);
+        setLinkError('invalid_token');
       } else if (!claim) {
-        setError('invalid-link');
+        setLinkError('invalid_token');
       } else if (claim.used_at) {
-        // Already claimed — safe to tell the user this specific fact
-        setError('already-claimed');
+        setLinkError('token_already_used');
       } else if (new Date(claim.expires_at) < new Date()) {
-        // Expired — safe to tell the user this specific fact
-        setError('expired');
+        setLinkError('expired_token');
       } else {
         setAthlete(claim.athletes);
       }
@@ -69,119 +117,106 @@ export default function ClaimBand() {
     fetchClaim();
   }, [token]);
 
+  // -------------------------------------------------------------------------
+  // handleClaim -- the single entry point for all claim attempts.
+  // Calls claim_band_atomic() which executes all DB mutations in one
+  // server-side transaction. If any step fails, the DB rolls back automatically.
+  // -------------------------------------------------------------------------
   const handleClaim = async (bandId: string) => {
     if (success || loading) return;
     setLoading(true);
-    setError(null);
+    setClaimError(null);
 
     try {
-      // 1. Check if band is available
-      const { data: band, error: bandError } = await supabase
-        .from('bands')
-        .select('*')
-        .eq('band_id', bandId)
-        .single();
+      const { data: result, error: rpcError } = await supabase.rpc('claim_band_atomic', {
+        p_token: token,
+        p_band_id: bandId,
+      });
 
-      if (bandError || !band) {
-        logDevError('handleClaim › band lookup', bandError);
-        throw new Error('wristband-not-found');
-      }
-      if (band.status !== 'available') {
-        throw new Error('wristband-unavailable');
+      if (rpcError) {
+        // Network-level or Postgres-level error (not an application error)
+        logDevError('handleClaim rpc call', rpcError);
+        setClaimError(RPC_ERROR_MESSAGES['claim_failed']);
+        return;
       }
 
-      // 2. Update Band
-      const { error: updateBandError } = await supabase
-        .from('bands')
-        .update({
-          status: 'assigned',
-          athlete_id: athlete.id,
-          assigned_at: new Date().toISOString(),
-        })
-        .eq('band_id', bandId);
+      // result is the jsonb payload returned by the function
+      if (!result?.success) {
+        const code: string = result?.code ?? 'claim_failed';
+        logDevError('handleClaim rpc returned failure', result);
 
-      if (updateBandError) {
-        logDevError('handleClaim › update band', updateBandError);
-        throw new Error('claim-failed');
+        if (LINK_LEVEL_CODES.has(code)) {
+          // Token became invalid between page load and claim attempt
+          // (e.g., another tab used it). Show the full-screen link error.
+          setLinkError(code);
+          setAthlete(null);
+        } else {
+          setClaimError(RPC_ERROR_MESSAGES[code] ?? RPC_ERROR_MESSAGES['claim_failed']);
+        }
+        return;
       }
 
-      // 3. Update Athlete
-      const { error: updateAthleteError } = await supabase
-        .from('athletes')
-        .update({ band_id: bandId })
-        .eq('id', athlete.id);
-
-      if (updateAthleteError) {
-        logDevError('handleClaim › update athlete', updateAthleteError);
-        throw new Error('claim-failed');
-      }
-
-      // 4. Mark Token Used
-      const { error: tokenError } = await supabase
-        .from('token_claims')
-        .update({ used_at: new Date().toISOString() })
-        .eq('token_hash', token);
-
-      if (tokenError) {
-        // Non-fatal: band and athlete are already linked. Log only.
-        logDevError('handleClaim › mark token used', tokenError);
-      }
-
-      setAssignedBand(band);
+      // Success
+      setAssignedBand({
+        band_id: result.band_id,
+        display_number: result.display_number,
+      });
       setSuccess(true);
-    } catch (err: unknown) {
-      const code = err instanceof Error ? err.message : 'claim-failed';
-      // Map internal error codes to public-safe messages
-      const publicMessage = CLAIM_ERROR_MESSAGES[code] ?? CLAIM_ERROR_MESSAGES['claim-failed'];
-      setError(publicMessage);
     } finally {
       setLoading(false);
     }
   };
 
+  // -------------------------------------------------------------------------
+  // handleManualSubmit -- resolves a display_number to a band_id, then
+  // delegates to handleClaim. The band lookup is a read-only SELECT; the
+  // mutation still goes through the RPC.
+  // -------------------------------------------------------------------------
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!bandNumber) return;
+    if (!bandNumber || !athlete) return;
 
     setLoading(true);
-    setError(null);
+    setClaimError(null);
 
     try {
       const { data: band, error: bandError } = await supabase
         .from('bands')
-        .select('*')
+        .select('band_id, display_number, status')
         .eq('event_id', athlete.event_id)
         .eq('display_number', parseInt(bandNumber))
         .single();
 
       if (bandError || !band) {
-        logDevError('handleManualSubmit › band lookup', bandError);
-        throw new Error('wristband-not-found');
+        logDevError('handleManualSubmit band lookup', bandError);
+        setClaimError(RPC_ERROR_MESSAGES['band_not_found']);
+        return;
       }
 
+      // Delegate to handleClaim -- it will call the RPC
       await handleClaim(band.band_id);
     } catch (err: unknown) {
-      const code = err instanceof Error ? err.message : 'claim-failed';
-      const publicMessage = CLAIM_ERROR_MESSAGES[code] ?? CLAIM_ERROR_MESSAGES['claim-failed'];
-      setError(publicMessage);
+      logDevError('handleManualSubmit unexpected', err);
+      setClaimError(RPC_ERROR_MESSAGES['claim_failed']);
+    } finally {
       setLoading(false);
     }
   };
 
   // -------------------------------------------------------------------------
-  // Loading state
+  // Loading state -- shown while token is being validated on mount
   // -------------------------------------------------------------------------
-  if (loading && !athlete && !error) {
+  if (loading && !athlete && !linkError) {
     return <div className="p-8 text-center text-zinc-500">Verifying session...</div>;
   }
 
   // -------------------------------------------------------------------------
-  // Invalid / expired / already-claimed link screen
-  // Shown when there is no valid athlete loaded yet.
+  // Invalid / expired / already-claimed link screen.
+  // Shown when the token is bad before any athlete is loaded.
   // No DB errors, table names, or stack traces are ever rendered here.
   // -------------------------------------------------------------------------
-  if (!athlete && error) {
-    const { title, body } = LINK_ERROR_UI[error] ?? LINK_ERROR_UI['invalid-link'];
+  if (linkError && !athlete) {
+    const { title, body } = LINK_ERROR_UI[linkError] ?? LINK_ERROR_UI['invalid_token'];
     return (
       <div className="max-w-md mx-auto px-4 py-16">
         <motion.div
@@ -246,10 +281,10 @@ export default function ClaimBand() {
       </header>
 
       {/* -----------------------------------------------------------------------
-          Inline error banner — shown after a failed claim attempt while the
+          Inline error banner -- shown after a failed claim attempt while the
           athlete is already loaded. Only public-safe messages are rendered.
       ----------------------------------------------------------------------- */}
-      {error && (
+      {claimError && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -257,7 +292,7 @@ export default function ClaimBand() {
         >
           <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
           <div>
-            <p className="font-semibold">{error}</p>
+            <p className="font-semibold">{claimError}</p>
             <p className="mt-1 text-red-600">{PUBLIC_ERROR_BODY}</p>
           </div>
         </motion.div>
@@ -337,7 +372,7 @@ export default function ClaimBand() {
           </div>
           <div>
             <h2 className="text-2xl font-bold mb-1">Wristband Assigned!</h2>
-            <p className="text-zinc-500">Athlete #{assignedBand.display_number} is ready for testing.</p>
+            <p className="text-zinc-500">Athlete #{assignedBand?.display_number} is ready for testing.</p>
           </div>
 
           <div className="p-6 bg-zinc-50 rounded-2xl border border-zinc-100">
@@ -345,7 +380,7 @@ export default function ClaimBand() {
               Athlete Number
             </div>
             <div className="text-6xl font-black text-zinc-900">
-              {String(assignedBand.display_number).padStart(3, '0')}
+              {String(assignedBand?.display_number ?? '').padStart(3, '0')}
             </div>
           </div>
 
@@ -353,36 +388,10 @@ export default function ClaimBand() {
             onClick={() => navigate('/')}
             className="w-full py-4 bg-zinc-900 text-white rounded-2xl font-bold hover:bg-zinc-800 transition-all"
           >
-            Done — Return Home
+            Done -- Return Home
           </button>
         </motion.div>
       )}
     </div>
   );
-}
-
-// ---------------------------------------------------------------------------
-// Error message maps — all values are public-safe strings.
-// Internal error codes are never exposed to the UI.
-// ---------------------------------------------------------------------------
-
-const CLAIM_ERROR_MESSAGES: Record<string, string> = {
-  'wristband-not-found': 'That wristband number was not found for this event.',
-  'wristband-unavailable': 'This wristband is already assigned. Please scan a different one.',
-  'claim-failed': "We're having trouble right now.",
-};
-
-const LINK_ERROR_UI: Record<string, { title: string; body: string }> = {
-  'invalid-link': {
-    title: 'Invalid or missing link',
-    body: 'This claim link is invalid. Please return to registration and try again.',
-  },
-  'already-claimed': {
-    title: 'Wristband already claimed',
-    body: 'This registration link has already been used. If you need help, please ask event staff.',
-  },
-  expired: {
-    title: 'Link has expired',
-    body: 'This claim link has expired. Please return to registration to receive a new one.',
-  },
-};
+        }
