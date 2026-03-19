@@ -21,16 +21,17 @@ export default function StaffLogin() {
       setError(error.message);
       setLoading(false);
     } else {
-      // In a real app, we'd fetch the station config or list
-      navigate('/staff/station/SPEED-1');
+      // Navigate to station selection so staff choose their own station.
+      // The previous hardcoded redirect to /staff/station/SPEED-1 has been removed.
+      navigate('/staff/select-station');
     }
   };
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-md mb-8">
-        <Link 
-          to="/" 
+        <Link
+          to="/"
           className="flex items-center gap-2 text-zinc-500 hover:text-zinc-900 transition-colors text-sm font-bold"
         >
           <ArrowLeft className="w-4 h-4" />
@@ -57,19 +58,19 @@ export default function StaffLogin() {
 
           <div className="space-y-1">
             <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Email Address</label>
-            <input 
+            <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full p-3 bg-zinc-50 border border-zinc-200 rounded-xl outline-none focus:ring-2 focus:ring-zinc-900"
-              placeholder="coach@coreelite.com"
+              placeholder="your@email.com"
               required
             />
           </div>
 
           <div className="space-y-1">
             <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Password</label>
-            <input 
+            <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -79,7 +80,7 @@ export default function StaffLogin() {
             />
           </div>
 
-          <button 
+          <button
             type="submit"
             disabled={loading}
             className="w-full py-4 bg-zinc-900 text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-zinc-800 transition-all disabled:opacity-50"

@@ -14,6 +14,7 @@ const Home = lazy(() => import('./pages/Home'));
 const Register = lazy(() => import('./pages/Register'));
 const ClaimBand = lazy(() => import('./pages/ClaimBand'));
 const StaffLogin = lazy(() => import('./pages/StaffLogin'));
+const StaffStationSelect = lazy(() => import('./pages/StaffStationSelect'));
 const StationMode = lazy(() => import('./pages/StationMode'));
 const AdminLogin = lazy(() => import('./pages/AdminLogin'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
@@ -37,6 +38,11 @@ export default function App() {
               <Route path="/p/:token" element={<ParentPortal />} />
               <Route path="/claim-band" element={<ClaimBand />} />
               <Route path="/staff/login" element={<StaffLogin />} />
+              <Route path="/staff/select-station" element={
+                <RouteGuard>
+                  <StaffStationSelect />
+                </RouteGuard>
+              } />
               <Route path="/staff/station/:stationId" element={
                 <RouteGuard>
                   <StationMode />

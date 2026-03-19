@@ -7,6 +7,21 @@ import { ChevronRight, CheckCircle2, AlertCircle, ArrowLeft } from 'lucide-react
 import { v4 as uuidv4 } from 'uuid';
 import { Link } from 'react-router-dom';
 
+// ---------------------------------------------------------------------------
+// Public-safe error message shown to unauthenticated users.
+// Technical details are intentionally omitted from the UI and sent to the
+// console only in development mode.
+// ---------------------------------------------------------------------------
+const PUBLIC_ERROR_MESSAGE = "We're having trouble right now.";
+const PUBLIC_ERROR_BODY =
+  'Please try again in a moment. If the problem continues, ask event staff for help.';
+
+function logDevError(context: string, err: unknown) {
+  if (import.meta.env.DEV) {
+    console.error(`[Register] ${context}`, err);
+  }
+}
+
 export default function Register() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -14,7 +29,8 @@ export default function Register() {
   const [event, setEvent] = useState<any>(null);
   const [availableEvents, setAvailableEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<{ message: string; details?: string } | null>(null);
+  // `message` is always public-safe. `details` is NEVER rendered in the UI.
+  const [error, setError] = useState<{ message: string } | null>(null);
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -41,10 +57,10 @@ export default function Register() {
     async function resolveEvent() {
       setLoading(true);
       setError(null);
-      
+
       try {
         const paramSlug = searchParams.get('event') || searchParams.get('slug');
-        
+
         // 1. Try to fetch by slug if provided
         if (paramSlug) {
           const { data: slugEvent, error: slugError } = await supabase
@@ -52,15 +68,10 @@ export default function Register() {
             .select('*')
             .eq('slug', paramSlug)
             .maybeSingle();
-          
+
           if (slugError) {
-            const isTableMissing = slugError.message.includes('Could not find the table') || slugError.code === '42P01';
-            setError({ 
-              message: isTableMissing ? 'Database not initialized.' : 'Database error while looking up event.', 
-              details: isTableMissing
-                ? 'The "events" table is missing from the database. Please run the schema migrations in Supabase.'
-                : `RLS or Connection Error: ${slugError.message}` 
-            });
+            logDevError('resolveEvent › slug lookup', slugError);
+            setError({ message: PUBLIC_ERROR_MESSAGE });
             setLoading(false);
             return;
           }
@@ -81,13 +92,8 @@ export default function Register() {
           .limit(1);
 
         if (liveError) {
-          const isTableMissing = liveError.message.includes('Could not find the table') || liveError.code === '42P01';
-          setError({ 
-            message: isTableMissing ? 'Database not initialized.' : 'Error fetching active events.', 
-            details: isTableMissing
-              ? 'The "events" table is missing from the database. Please run the schema migrations in Supabase.'
-              : `RLS or Connection Error: ${liveError.message}` 
-          });
+          logDevError('resolveEvent › live event lookup', liveError);
+          setError({ message: PUBLIC_ERROR_MESSAGE });
           setLoading(false);
           return;
         }
@@ -106,23 +112,19 @@ export default function Register() {
           .order('created_at', { ascending: true });
 
         if (allError) {
-          const isTableMissing = allError.message.includes('Could not find the table') || allError.code === '42P01';
-          setError({ 
-            message: isTableMissing ? 'Database not initialized.' : 'Error fetching event list.', 
-            details: isTableMissing 
-              ? 'The "events" table is missing from the database. Please run the schema migrations in Supabase.'
-              : `RLS or Connection Error: ${allError.message}` 
-          });
+          logDevError('resolveEvent › all events lookup', allError);
+          setError({ message: PUBLIC_ERROR_MESSAGE });
         } else if (allEvents && allEvents.length > 0) {
           setAvailableEvents(allEvents);
         } else {
-          setError({ 
-            message: 'No events are currently scheduled.', 
-            details: 'The events table is empty or no events are in "live" or "draft" status.' 
+          // No events scheduled — friendly, non-technical message
+          setError({
+            message: 'Registration is not open yet. Please check back closer to the event date.',
           });
         }
-      } catch (err: any) {
-        setError({ message: 'An unexpected error occurred.', details: err.message });
+      } catch (err: unknown) {
+        logDevError('resolveEvent › unexpected', err);
+        setError({ message: PUBLIC_ERROR_MESSAGE });
       } finally {
         setLoading(false);
       }
@@ -181,7 +183,7 @@ export default function Register() {
           media_release: formData.mediaRelease,
           data_consent: formData.dataConsent,
           marketing_consent: formData.marketingConsent,
-          waiver_version: '2026.1'
+          waiver_version: '2026.1',
         });
 
       if (waiverError) throw waiverError;
@@ -203,19 +205,22 @@ export default function Register() {
       if (tokenError) throw tokenError;
 
       // 4. Create Parent Portal Token
-      const portalToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-      await supabase
-        .from('parent_portals')
-        .insert({
-          athlete_id: athlete.id,
-          event_id: event.id,
-          portal_token: portalToken
-        });
+      const portalToken =
+        Math.random().toString(36).substring(2, 15) +
+        Math.random().toString(36).substring(2, 15);
+      await supabase.from('parent_portals').insert({
+        athlete_id: athlete.id,
+        event_id: event.id,
+        portal_token: portalToken,
+      });
 
       // Success!
       navigate(`/claim-band?athleteToken=${token}`);
-    } catch (err: any) {
-      setError({ message: 'Registration failed.', details: err.message });
+    } catch (err: unknown) {
+      logDevError('handleSubmit', err);
+      setError({
+        message: 'Registration could not be completed. Please try again or ask event staff for help.',
+      });
       setLoading(false);
     }
   };
@@ -236,12 +241,14 @@ export default function Register() {
     return (
       <div className="max-w-2xl mx-auto px-4 py-16">
         <header className="text-center mb-12">
-          <h1 className="text-4xl font-black uppercase italic tracking-tighter mb-4">Choose Your Event</h1>
+          <h1 className="text-4xl font-black uppercase italic tracking-tighter mb-4">
+            Choose Your Event
+          </h1>
           <p className="text-zinc-500">Select an upcoming combine to begin your registration.</p>
         </header>
 
         <div className="grid gap-4">
-          {availableEvents.map(ev => (
+          {availableEvents.map((ev) => (
             <button
               key={ev.id}
               onClick={() => navigate(`/register?event=${ev.slug}`)}
@@ -249,15 +256,17 @@ export default function Register() {
             >
               <div className="flex justify-between items-start mb-2">
                 <h3 className="text-xl font-bold group-hover:text-zinc-900">{ev.name}</h3>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                  ev.status === 'live' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                }`}>
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                    ev.status === 'live'
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : 'bg-amber-100 text-amber-700'
+                  }`}
+                >
                   {ev.status}
                 </span>
               </div>
-              <div className="flex gap-4 text-sm text-zinc-400">
-                <span>{new Date(ev.created_at).toLocaleDateString()}</span>
-                <span>•</span>
+              <div className="flex gap-4 text-zinc-500 text-sm">
                 <span>{ev.location}</span>
               </div>
             </button>
@@ -267,317 +276,444 @@ export default function Register() {
     );
   }
 
+  // -------------------------------------------------------------------------
+  // Public-safe error screen.
+  // Shows a friendly message only — no DB errors, table names, or migration
+  // instructions are ever rendered here.
+  // -------------------------------------------------------------------------
   if (error && !event) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-zinc-50 px-4">
-        <div className="max-w-md w-full bg-white p-8 rounded-3xl border border-zinc-200 shadow-xl text-center space-y-6">
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50 p-4">
+        <div className="bg-white p-8 rounded-3xl border border-zinc-200 shadow-xl text-center max-w-sm space-y-6">
           <div className="w-16 h-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center mx-auto">
             <AlertCircle className="w-8 h-8" />
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-zinc-900 mb-2">{error.message}</h2>
-            <p className="text-zinc-500 text-sm">{error.details}</p>
+            <h2 className="text-xl font-bold mb-2">{error.message}</h2>
+            <p className="text-zinc-500 text-sm">{PUBLIC_ERROR_BODY}</p>
           </div>
-          <div className="pt-4 space-y-3">
-            <button 
+          <div className="space-y-3 pt-2">
+            <button
               onClick={() => window.location.reload()}
-              className="w-full py-3 bg-zinc-900 text-white rounded-xl font-bold hover:bg-zinc-800 transition-all"
+              className="w-full py-3 bg-zinc-900 text-white rounded-2xl font-bold hover:bg-zinc-800 transition-all"
             >
               Try Again
             </button>
-            <button 
+            <button
               onClick={() => navigate('/')}
-              className="w-full py-3 bg-white border border-zinc-200 text-zinc-600 rounded-xl font-bold hover:bg-zinc-50 transition-all"
+              className="w-full py-3 bg-white border border-zinc-200 text-zinc-600 rounded-2xl font-bold hover:bg-zinc-50 transition-all"
             >
               Return Home
             </button>
           </div>
-          {import.meta.env.DEV && (
-            <div className="mt-8 p-4 bg-zinc-50 rounded-xl text-left">
-              <p className="text-[10px] font-bold uppercase text-zinc-400 mb-2">Admin Troubleshooting</p>
-              <ul className="text-[10px] text-zinc-500 list-disc pl-4 space-y-1">
-                <li>Check if an event exists in the <code>events</code> table.</li>
-                <li>Ensure the event <code>status</code> is set to 'live' or 'draft'.</li>
-                <li>Verify RLS policies allow public SELECT on <code>events</code>.</li>
-                <li>Visit <button onClick={() => navigate('/admin/diagnostics')} className="underline">Diagnostics</button></li>
-              </ul>
-            </div>
-          )}
         </div>
       </div>
     );
   }
 
+  // -------------------------------------------------------------------------
+  // Inline submission error banner (shown mid-form after a failed handleSubmit)
+  // -------------------------------------------------------------------------
+  const InlineErrorBanner = () =>
+    error ? (
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mb-6 p-4 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-3 text-red-700 text-sm"
+      >
+        <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+        <div>
+          <p className="font-semibold">{error.message}</p>
+          <p className="mt-1 text-red-600">{PUBLIC_ERROR_BODY}</p>
+        </div>
+      </motion.div>
+    ) : null;
+
+  // -------------------------------------------------------------------------
+  // Main multi-step registration form (unchanged structure)
+  // -------------------------------------------------------------------------
   return (
     <div className="max-w-2xl mx-auto px-4 py-8">
-      <div className="mb-8 flex items-center justify-between">
-        <Link 
-          to="/" 
+      <div className="mb-6">
+        <Link
+          to="/"
           className="flex items-center gap-2 text-zinc-500 hover:text-zinc-900 transition-colors text-sm font-bold"
         >
           <ArrowLeft className="w-4 h-4" />
           Back to Home
         </Link>
-        <div className="flex items-center gap-2 text-sm text-zinc-400">
-          <span className={step >= 1 ? "text-zinc-900 font-bold" : ""}>1. Profile</span>
-          <ChevronRight className="w-4 h-4" />
-          <span className={step >= 2 ? "text-zinc-900 font-bold" : ""}>2. Waiver</span>
-          <ChevronRight className="w-4 h-4" />
-          <span className={step >= 3 ? "text-zinc-900 font-bold" : ""}>3. Claim Band</span>
-        </div>
       </div>
 
-      <div className="mb-8">
-        <h1 className="text-3xl font-black uppercase italic italic tracking-tighter">
-          Athlete Registration
-        </h1>
-        <p className="text-zinc-500">{event?.name} • {event?.location}</p>
+      {event && (
+        <header className="mb-8">
+          <div className="flex items-center gap-2 mb-1">
+            <span
+              className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                event.status === 'live'
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : 'bg-amber-100 text-amber-700'
+              }`}
+            >
+              {event.status}
+            </span>
+          </div>
+          <h1 className="text-3xl font-black uppercase italic tracking-tighter">
+            {event.name}
+          </h1>
+          <p className="text-zinc-500 text-sm mt-1">{event.location}</p>
+        </header>
+      )}
+
+      {/* Step progress indicator */}
+      <div className="flex items-center gap-2 mb-8">
+        {[1, 2, 3].map((s) => (
+          <React.Fragment key={s}>
+            <div
+              className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black transition-all ${
+                step >= s
+                  ? 'bg-zinc-900 text-white'
+                  : 'bg-zinc-100 text-zinc-400'
+              }`}
+            >
+              {step > s ? <CheckCircle2 className="w-4 h-4" /> : s}
+            </div>
+            {s < 3 && (
+              <div
+                className={`flex-1 h-0.5 transition-all ${
+                  step > s ? 'bg-zinc-900' : 'bg-zinc-200'
+                }`}
+              />
+            )}
+          </React.Fragment>
+        ))}
       </div>
+
+      <InlineErrorBanner />
 
       <AnimatePresence mode="wait">
+        {/* Step 1 — Athlete Info */}
         {step === 1 && (
-          <motion.div 
+          <motion.div
             key="step1"
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
             className="space-y-6"
           >
+            <h2 className="text-2xl font-bold">Athlete Information</h2>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
-                <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">First Name</label>
-                <input 
-                  name="firstName" 
-                  value={formData.firstName} 
+                <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                  First Name *
+                </label>
+                <input
+                  name="firstName"
+                  value={formData.firstName}
                   onChange={handleInputChange}
-                  className="w-full p-3 bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none" 
-                  placeholder="John"
+                  className="w-full p-3 bg-zinc-50 border border-zinc-200 rounded-xl outline-none focus:border-zinc-900 transition-colors"
+                  placeholder="First"
+                  required
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Last Name</label>
-                <input 
-                  name="lastName" 
-                  value={formData.lastName} 
+                <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                  Last Name *
+                </label>
+                <input
+                  name="lastName"
+                  value={formData.lastName}
                   onChange={handleInputChange}
-                  className="w-full p-3 bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none" 
-                  placeholder="Doe"
+                  className="w-full p-3 bg-zinc-50 border border-zinc-200 rounded-xl outline-none focus:border-zinc-900 transition-colors"
+                  placeholder="Last"
+                  required
                 />
               </div>
             </div>
 
+            <div className="space-y-1">
+              <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                Date of Birth *
+              </label>
+              <input
+                type="date"
+                name="date_of_birth"
+                value={formData.date_of_birth}
+                onChange={handleInputChange}
+                className="w-full p-3 bg-zinc-50 border border-zinc-200 rounded-xl outline-none focus:border-zinc-900 transition-colors"
+                required
+              />
+              {dateOfBirthError && (
+                <p className="text-red-600 text-xs mt-1">{dateOfBirthError}</p>
+              )}
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
-                <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Date of Birth</label>
-                <input 
-                  type="date"
-                  name="date_of_birth" 
-                  value={formData.date_of_birth} 
+                <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                  Grade
+                </label>
+                <select
+                  name="grade"
+                  value={formData.grade}
                   onChange={handleInputChange}
-                  className={`w-full p-3 bg-white border ${dateOfBirthError ? 'border-red-500 ring-1 ring-red-500' : 'border-zinc-200'} rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none`} 
-                />
-                {dateOfBirthError && <p className="text-[10px] font-bold text-red-500 mt-1">{dateOfBirthError}</p>}
+                  className="w-full p-3 bg-zinc-50 border border-zinc-200 rounded-xl outline-none focus:border-zinc-900 transition-colors"
+                >
+                  <option value="">Select grade</option>
+                  {['6th', '7th', '8th', '9th', '10th', '11th', '12th'].map((g) => (
+                    <option key={g} value={g}>
+                      {g}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Position</label>
-                <select 
-                  name="position" 
-                  value={formData.position} 
+                <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                  Position
+                </label>
+                <select
+                  name="position"
+                  value={formData.position}
                   onChange={handleInputChange}
-                  className="w-full p-3 bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none"
+                  className="w-full p-3 bg-zinc-50 border border-zinc-200 rounded-xl outline-none focus:border-zinc-900 transition-colors"
                 >
-                  <option value="">Select Position</option>
-                  <option value="QB">Quarterback</option>
-                  <option value="RB">Running Back</option>
-                  <option value="WR">Wide Receiver</option>
-                  <option value="TE">Tight End</option>
-                  <option value="OL">Offensive Line</option>
-                  <option value="DL">Defensive Line</option>
-                  <option value="LB">Linebacker</option>
-                  <option value="DB">Defensive Back</option>
+                  <option value="">Select position</option>
+                  {['QB', 'RB', 'WR', 'TE', 'OL', 'DL', 'LB', 'DB', 'K/P', 'ATH'].map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
 
-            <div className="space-y-4 pt-4 border-t border-zinc-100">
-              <h3 className="font-bold">Parent/Guardian Information</h3>
-              <div className="space-y-1">
-                <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Full Name</label>
-                <input 
-                  name="parentName" 
-                  value={formData.parentName} 
-                  onChange={handleInputChange}
-                  className="w-full p-3 bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none" 
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Email</label>
-                  <input 
-                    type="email"
-                    name="parentEmail" 
-                    value={formData.parentEmail} 
-                    onChange={handleInputChange}
-                    className="w-full p-3 bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none" 
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Phone</label>
-                  <input 
-                    type="tel"
-                    name="parentPhone" 
-                    value={formData.parentPhone} 
-                    onChange={handleInputChange}
-                    className="w-full p-3 bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none" 
-                  />
-                </div>
-              </div>
-            </div>
-
-            <button 
+            <button
               onClick={() => {
-                if (!formData.firstName || !formData.lastName || !formData.date_of_birth || !formData.parentEmail) {
-                  if (!formData.date_of_birth) {
-                    setDateOfBirthError('Date of birth is required.');
-                  }
-                  setError({ message: 'Missing Required Fields', details: 'Please complete all required fields including Date of Birth.' });
+                if (!formData.firstName || !formData.lastName || !formData.date_of_birth) {
+                  setDateOfBirthError(!formData.date_of_birth ? 'Date of birth is required.' : null);
                   return;
                 }
-                setError(null);
-                setDateOfBirthError(null);
                 setStep(2);
               }}
-              className="w-full py-4 bg-zinc-900 text-white rounded-2xl font-bold text-lg shadow-lg hover:bg-zinc-800 transition-all flex items-center justify-center gap-2"
+              className="w-full py-4 bg-zinc-900 text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-zinc-800 transition-all"
             >
-              Continue to Waiver
-              <ChevronRight className="w-5 h-5" />
+              Continue <ChevronRight className="w-5 h-5" />
             </button>
           </motion.div>
         )}
 
+        {/* Step 2 — Parent / Guardian Info */}
         {step === 2 && (
-          <motion.div 
+          <motion.div
             key="step2"
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
             className="space-y-6"
           >
-            <div className="bg-white p-6 rounded-2xl border border-zinc-200 space-y-4 max-h-96 overflow-y-auto text-sm text-zinc-600 leading-relaxed">
-              <h2 className="text-lg font-bold text-zinc-900">Release of Liability & Consent</h2>
-              <p>I, the undersigned parent/guardian, hereby give permission for the athlete named above to participate in the Core Elite Combine 2026. I understand that athletic testing involves inherent risks of injury.</p>
-              <p>I release Core Elite and its staff from any and all liability for injuries sustained during the event. I also consent to the use of any photos or videos taken during the event for promotional purposes.</p>
-              <p>In case of emergency, I authorize the staff to seek medical attention for the athlete if I cannot be reached immediately.</p>
-              <div className="pt-4 border-t border-zinc-100 space-y-4">
-                <div className="space-y-4">
-                  <label className="flex items-start gap-3 cursor-pointer group">
-                    <input 
-                      type="checkbox" 
-                      name="injuryWaiverAck"
-                      checked={formData.injuryWaiverAck}
-                      onChange={handleInputChange}
-                      className="mt-1 w-4 h-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900"
-                    />
-                    <span className="text-xs font-medium text-zinc-700 group-hover:text-zinc-900">
-                      I acknowledge the injury waiver and release of liability. <span className="text-red-500">*</span>
-                    </span>
-                  </label>
-                  <label className="flex items-start gap-3 cursor-pointer group">
-                    <input 
-                      type="checkbox" 
-                      name="mediaRelease"
-                      checked={formData.mediaRelease}
-                      onChange={handleInputChange}
-                      className="mt-1 w-4 h-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900"
-                    />
-                    <span className="text-xs font-medium text-zinc-700 group-hover:text-zinc-900">
-                      I consent to the media release for promotional purposes. <span className="text-red-500">*</span>
-                    </span>
-                  </label>
-                  <label className="flex items-start gap-3 cursor-pointer group">
-                    <input 
-                      type="checkbox" 
-                      name="dataConsent"
-                      checked={formData.dataConsent}
-                      onChange={handleInputChange}
-                      className="mt-1 w-4 h-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900"
-                    />
-                    <span className="text-xs font-medium text-zinc-700 group-hover:text-zinc-900">
-                      I consent to the collection and processing of athletic performance data. <span className="text-red-500">*</span>
-                    </span>
-                  </label>
-                  <label className="flex items-start gap-3 cursor-pointer group">
-                    <input 
-                      type="checkbox" 
-                      name="marketingConsent"
-                      checked={formData.marketingConsent}
-                      onChange={handleInputChange}
-                      className="mt-1 w-4 h-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900"
-                    />
-                    <span className="text-xs font-medium text-zinc-700 group-hover:text-zinc-900">
-                      I would like to receive updates and marketing materials (Optional).
-                    </span>
-                  </label>
-                </div>
+            <div className="flex items-center gap-3 mb-2">
+              <button
+                onClick={() => setStep(1)}
+                className="p-2 rounded-xl hover:bg-zinc-100 transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+              <h2 className="text-2xl font-bold">Parent / Guardian</h2>
+            </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Emergency Contact Name</label>
-                  <input 
-                    name="emergencyContactName" 
-                    value={formData.emergencyContactName} 
-                    onChange={handleInputChange}
-                    className="w-full p-3 bg-zinc-50 border border-zinc-200 rounded-xl outline-none" 
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Emergency Contact Phone</label>
-                  <input 
-                    name="emergencyContactPhone" 
-                    value={formData.emergencyContactPhone} 
-                    onChange={handleInputChange}
-                    className="w-full p-3 bg-zinc-50 border border-zinc-200 rounded-xl outline-none" 
-                  />
-                </div>
+            <div className="space-y-1">
+              <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                Parent / Guardian Name *
+              </label>
+              <input
+                name="parentName"
+                value={formData.parentName}
+                onChange={handleInputChange}
+                className="w-full p-3 bg-zinc-50 border border-zinc-200 rounded-xl outline-none focus:border-zinc-900 transition-colors"
+                placeholder="Full name"
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                  Email *
+                </label>
+                <input
+                  type="email"
+                  name="parentEmail"
+                  value={formData.parentEmail}
+                  onChange={handleInputChange}
+                  className="w-full p-3 bg-zinc-50 border border-zinc-200 rounded-xl outline-none focus:border-zinc-900 transition-colors"
+                  placeholder="email@example.com"
+                  required
+                />
               </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                  Phone *
+                </label>
+                <input
+                  type="tel"
+                  name="parentPhone"
+                  value={formData.parentPhone}
+                  onChange={handleInputChange}
+                  className="w-full p-3 bg-zinc-50 border border-zinc-200 rounded-xl outline-none focus:border-zinc-900 transition-colors"
+                  placeholder="(555) 000-0000"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                Relationship to Athlete
+              </label>
+              <select
+                name="guardianRelationship"
+                value={formData.guardianRelationship}
+                onChange={handleInputChange}
+                className="w-full p-3 bg-zinc-50 border border-zinc-200 rounded-xl outline-none focus:border-zinc-900 transition-colors"
+              >
+                <option value="">Select relationship</option>
+                {['Parent', 'Guardian', 'Grandparent', 'Other'].map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                  Emergency Contact Name
+                </label>
+                <input
+                  name="emergencyContactName"
+                  value={formData.emergencyContactName}
+                  onChange={handleInputChange}
+                  className="w-full p-3 bg-zinc-50 border border-zinc-200 rounded-xl outline-none focus:border-zinc-900 transition-colors"
+                  placeholder="Full name"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                  Emergency Contact Phone
+                </label>
+                <input
+                  type="tel"
+                  name="emergencyContactPhone"
+                  value={formData.emergencyContactPhone}
+                  onChange={handleInputChange}
+                  className="w-full p-3 bg-zinc-50 border border-zinc-200 rounded-xl outline-none focus:border-zinc-900 transition-colors"
+                  placeholder="(555) 000-0000"
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                if (!formData.parentName || !formData.parentEmail || !formData.parentPhone) return;
+                setStep(3);
+              }}
+              className="w-full py-4 bg-zinc-900 text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-zinc-800 transition-all"
+            >
+              Continue <ChevronRight className="w-5 h-5" />
+            </button>
+          </motion.div>
+        )}
+
+        {/* Step 3 — Waiver & Signature */}
+        {step === 3 && (
+          <motion.div
+            key="step3"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            className="space-y-6"
+          >
+            <div className="flex items-center gap-3 mb-2">
+              <button
+                onClick={() => setStep(2)}
+                className="p-2 rounded-xl hover:bg-zinc-100 transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+              <h2 className="text-2xl font-bold">Waiver & Consent</h2>
+            </div>
+
+            <div className="bg-zinc-50 p-4 rounded-2xl border border-zinc-200 text-xs text-zinc-600 space-y-2 max-h-40 overflow-y-auto">
+              <p className="font-bold">Participation Waiver — Core Elite Combine 2026</p>
+              <p>
+                By signing below, I acknowledge that participation in athletic combine activities
+                involves inherent risks of injury. I voluntarily assume all risks associated with
+                participation and release Core Elite and its organizers from any liability.
+              </p>
+              <p>
+                I consent to emergency medical treatment if necessary. I grant permission for
+                photographs and video taken during the event to be used for promotional purposes
+                unless I opt out below.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              {[
+                { name: 'injuryWaiverAck', label: 'I acknowledge the injury waiver and assume all risks *' },
+                { name: 'dataConsent', label: "I consent to my athlete's data being stored and used for combine results *" },
+                { name: 'mediaRelease', label: 'I grant media release permission for photos/video (optional)' },
+                { name: 'marketingConsent', label: 'I agree to receive event updates and marketing communications (optional)' },
+              ].map(({ name, label }) => (
+                <label key={name} className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    name={name}
+                    checked={formData[name as keyof typeof formData] as boolean}
+                    onChange={handleInputChange}
+                    className="mt-0.5 w-4 h-4 rounded accent-zinc-900"
+                  />
+                  <span className="text-sm text-zinc-700">{label}</span>
+                </label>
+              ))}
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Parent/Guardian Signature</label>
-              <SignatureCanvas onSave={(url) => {
-                setSignature(url);
-                setError(null);
-              }} onClear={() => setSignature(null)} />
+              <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                Guardian Signature *
+              </label>
+              <SignatureCanvas onSave={setSignature} />
+              {signature && (
+                <p className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" /> Signature captured
+                </p>
+              )}
             </div>
 
-            {error && (
-              <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-600 text-sm">
-                <AlertCircle className="w-5 h-5" />
-                <div>
-                  <div className="font-bold">{error.message}</div>
-                  {error.details && <div className="text-[10px] opacity-70">{error.details}</div>}
-                </div>
-              </div>
-            )}
-
-            <div className="flex gap-4">
-              <button 
-                onClick={() => setStep(1)}
-                className="flex-1 py-4 border border-zinc-200 rounded-2xl font-bold text-zinc-600 hover:bg-zinc-50 transition-all"
-              >
-                Back
-              </button>
-              <button 
-                onClick={handleSubmit}
-                disabled={!signature || !formData.injuryWaiverAck || !formData.mediaRelease || !formData.dataConsent || loading}
-                className="flex-[2] py-4 bg-zinc-900 text-white rounded-2xl font-bold text-lg shadow-lg hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
-              >
-                {loading ? 'Processing...' : 'Complete Registration'}
-                {!loading && <CheckCircle2 className="w-5 h-5" />}
-              </button>
-            </div>
+            <button
+              onClick={handleSubmit}
+              disabled={
+                !signature ||
+                !formData.injuryWaiverAck ||
+                !formData.dataConsent ||
+                loading
+              }
+              className="w-full py-4 bg-zinc-900 text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-zinc-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Registering...
+                </>
+              ) : (
+                <>
+                  Complete Registration <CheckCircle2 className="w-5 h-5" />
+                </>
+              )}
+            </button>
           </motion.div>
         )}
       </AnimatePresence>
     </div>
   );
-}
+      }

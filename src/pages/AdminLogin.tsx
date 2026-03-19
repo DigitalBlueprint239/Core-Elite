@@ -76,7 +76,7 @@ export default function AdminLogin() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full p-3 bg-zinc-50 border border-zinc-200 rounded-xl outline-none focus:ring-2 focus:ring-zinc-900"
-              placeholder="admin@coreelite.com"
+              placeholder="your@email.com"
               required
             />
           </div>
@@ -105,4 +105,4 @@ export default function AdminLogin() {
       </div>
     </div>
   );
-}
+                                           }
