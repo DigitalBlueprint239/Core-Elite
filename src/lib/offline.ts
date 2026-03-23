@@ -1,14 +1,16 @@
-import { openDB, IDBPDatabase } from 'idb';
+import { openDB } from 'idb';
 
 const DB_NAME = 'core_elite_combine_db';
 const DB_VERSION = 1;
 
 export interface OutboxItem {
-  id: string; // client_result_id
+  id: string; // client_result_id or heartbeat id
   type: 'result' | 'device_status';
   payload: any;
   timestamp: number;
   attempts: number;
+  status?: 'pending' | 'failed';
+  last_error?: string | null;
 }
 
 export interface AthleteCache {
@@ -37,7 +39,11 @@ export async function initDB() {
 
 export async function addToOutbox(item: OutboxItem) {
   const db = await initDB();
-  await db.put('outbox', item);
+  await db.put('outbox', {
+    ...item,
+    status: item.status || 'pending',
+    last_error: item.last_error || null,
+  });
 }
 
 export async function getOutboxItems(): Promise<OutboxItem[]> {
@@ -45,9 +51,46 @@ export async function getOutboxItems(): Promise<OutboxItem[]> {
   return db.getAll('outbox');
 }
 
+export async function getPendingOutboxItems(): Promise<OutboxItem[]> {
+  const items = await getOutboxItems();
+  return items.filter(item => item.status !== 'failed');
+}
+
+export async function getFailedOutboxItems(): Promise<OutboxItem[]> {
+  const items = await getOutboxItems();
+  return items.filter(item => item.status === 'failed');
+}
+
 export async function removeFromOutbox(id: string) {
   const db = await initDB();
   await db.delete('outbox', id);
+}
+
+export async function updateOutboxItem(id: string, updates: Partial<OutboxItem>) {
+  const db = await initDB();
+  const existing = await db.get('outbox', id);
+  if (!existing) return;
+
+  await db.put('outbox', {
+    ...existing,
+    ...updates,
+  });
+}
+
+export async function resetFailedOutboxItems() {
+  const db = await initDB();
+  const items = await db.getAll('outbox');
+
+  await Promise.all(
+    items
+      .filter(item => item.status === 'failed')
+      .map(item => db.put('outbox', {
+        ...item,
+        status: 'pending',
+        attempts: 0,
+        last_error: null,
+      }))
+  );
 }
 
 export async function cacheAthlete(athlete: AthleteCache) {
