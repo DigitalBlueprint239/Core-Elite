@@ -23,9 +23,20 @@ export function useOfflineSync() {
     for (const item of items) {
       try {
         if (item.type === 'result') {
-          const { error } = await supabase.from('results').insert(item.payload);
-          // If error is duplicate (409/23505), we still remove it from outbox
-          if (!error || error.code === '23505') {
+          const { data, error } = await supabase.rpc('submit_result_atomic', {
+            p_client_result_id: item.payload.client_result_id,
+            p_event_id: item.payload.event_id,
+            p_athlete_id: item.payload.athlete_id,
+            p_band_id: item.payload.band_id,
+            p_station_id: item.payload.station_id,
+            p_drill_type: item.payload.drill_type,
+            p_value_num: item.payload.value_num,
+            p_meta: item.payload.meta || {},
+            p_recorded_at: item.payload.recorded_at,
+          });
+          const result = Array.isArray(data) ? data[0] : data;
+          // If duplicate or already inserted, we still remove it from outbox
+          if (!error && result) {
             await removeFromOutbox(item.id);
 
             // Check if athlete has completed all drills to trigger report
@@ -50,6 +61,8 @@ export function useOfflineSync() {
             } catch (e) {
               console.error('Report trigger check failed', e);
             }
+          } else if (error?.code === '23505') {
+            await removeFromOutbox(item.id);
           } else {
             console.error('Sync error for item', item.id, error);
           }

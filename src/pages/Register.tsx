@@ -143,15 +143,19 @@ export default function Register() {
   };
 
   const handleSubmit = async () => {
-    if (!signature) return;
+    if (!signature || loading || !event) return;
     setLoading(true);
+    setError(null);
 
     try {
-      // 1. Create Athlete
-      const { data: athlete, error: athleteError } = await supabase
-        .from('athletes')
-        .insert({
-          event_id: event.id,
+      const token = uuidv4();
+      const expiresAt = new Date();
+      expiresAt.setHours(expiresAt.getHours() + 2);
+      const portalToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+
+      const { data, error: registrationError } = await supabase.rpc('register_athlete_atomic', {
+        p_event_id: event.id,
+        p_athlete: {
           first_name: formData.firstName,
           last_name: formData.lastName,
           date_of_birth: formData.date_of_birth,
@@ -160,18 +164,8 @@ export default function Register() {
           parent_name: formData.parentName,
           parent_email: formData.parentEmail,
           parent_phone: formData.parentPhone,
-        })
-        .select()
-        .single();
-
-      if (athleteError) throw athleteError;
-
-      // 2. Create Waiver
-      const { error: waiverError } = await supabase
-        .from('waivers')
-        .insert({
-          athlete_id: athlete.id,
-          event_id: event.id,
+        },
+        p_waiver: {
           guardian_name: formData.parentName,
           guardian_relationship: formData.guardianRelationship,
           emergency_contact_name: formData.emergencyContactName,
@@ -181,39 +175,19 @@ export default function Register() {
           media_release: formData.mediaRelease,
           data_consent: formData.dataConsent,
           marketing_consent: formData.marketingConsent,
-          waiver_version: '2026.1'
-        });
+          waiver_version: '2026.1',
+        },
+        p_claim_token: token,
+        p_claim_expires_at: expiresAt.toISOString(),
+        p_portal_token: portalToken,
+      });
 
-      if (waiverError) throw waiverError;
+      if (registrationError) throw registrationError;
 
-      // 3. Create Athlete Token for Band Claim
-      const token = uuidv4();
-      const expiresAt = new Date();
-      expiresAt.setHours(expiresAt.getHours() + 2);
+      const registration = Array.isArray(data) ? data[0] : data;
+      const claimToken = registration?.claim_token || token;
 
-      const { error: tokenError } = await supabase
-        .from('token_claims')
-        .insert({
-          token_hash: token, // In real app, hash this
-          event_id: event.id,
-          athlete_id: athlete.id,
-          expires_at: expiresAt.toISOString(),
-        });
-
-      if (tokenError) throw tokenError;
-
-      // 4. Create Parent Portal Token
-      const portalToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-      await supabase
-        .from('parent_portals')
-        .insert({
-          athlete_id: athlete.id,
-          event_id: event.id,
-          portal_token: portalToken
-        });
-
-      // Success!
-      navigate(`/claim-band?athleteToken=${token}`);
+      navigate(`/claim-band?athleteToken=${claimToken}`);
     } catch (err: any) {
       setError({ message: 'Registration failed.', details: err.message });
       setLoading(false);

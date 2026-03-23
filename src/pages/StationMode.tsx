@@ -109,6 +109,18 @@ export default function StationMode() {
           throw new Error('Athlete not found.');
         }
 
+        if (data.event_id !== station.event_id) {
+          throw new Error('This band belongs to a different event.');
+        }
+
+        if (data.status !== 'assigned') {
+          throw new Error('This band is not currently assigned.');
+        }
+
+        if (data.athlete_id !== data.athletes.id || data.athletes.band_id !== bandId) {
+          throw new Error('Band assignment is out of sync. Please re-check the athlete.');
+        }
+
         athleteData = {
           band_id: bandId,
           athlete_id: data.athletes.id,
