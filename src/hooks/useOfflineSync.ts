@@ -37,13 +37,8 @@ export function useOfflineSync() {
     if (!navigator.onLine) return;
 
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      setLastSyncError('Staff session expired. Log in again before syncing queued items.');
-      await updatePendingCount();
-      return;
-    }
-
     const items = await getPendingOutboxItems();
+
     if (items.length === 0) {
       await updatePendingCount();
       return;
@@ -54,6 +49,11 @@ export function useOfflineSync() {
     for (const item of items) {
       try {
         if (item.type === 'result') {
+          if (!session) {
+            await markSyncFailure(item.id, item.attempts || 0, 'Staff session expired. Log in again before syncing queued items.');
+            continue;
+          }
+
           const { data, error } = await supabase.rpc('submit_result_atomic', {
             p_client_result_id: item.payload.client_result_id,
             p_event_id: item.payload.event_id,
