@@ -17,6 +17,10 @@ A production-ready web application for athletic combine events.
 3. **Production Build**:
    - `npm run build`
 
+## Launch Readiness Runbook
+
+- See `docs/launch-readiness.md` for deployment order, SQL verification queries, and the full end-to-end smoke test checklist.
+
 ## Event Day Checklist
 
 ### 1. Pre-Event Setup
