@@ -52,44 +52,17 @@ export default function ClaimBand() {
     setError(null);
 
     try {
-      // Atomic Claim Logic
-      // 1. Check if band is available
-      const { data: band, error: bandError } = await supabase
-        .from('bands')
-        .select('*')
-        .eq('band_id', bandId)
-        .single();
+      const { data, error: claimError } = await supabase.rpc('claim_band_atomic', {
+        p_token: token,
+        p_band_id: bandId,
+      });
 
-      if (bandError || !band) throw new Error('Invalid wristband ID.');
-      if (band.status !== 'available') throw new Error('This wristband is already assigned or void.');
+      if (claimError) throw claimError;
 
-      // 2. Update Band
-      const { error: updateBandError } = await supabase
-        .from('bands')
-        .update({
-          status: 'assigned',
-          athlete_id: athlete.id,
-          assigned_at: new Date().toISOString(),
-        })
-        .eq('band_id', bandId);
+      const claimedBand = Array.isArray(data) ? data[0] : data;
+      if (!claimedBand) throw new Error('Band claim did not return a band record.');
 
-      if (updateBandError) throw updateBandError;
-
-      // 3. Update Athlete
-      const { error: updateAthleteError } = await supabase
-        .from('athletes')
-        .update({ band_id: bandId })
-        .eq('id', athlete.id);
-
-      if (updateAthleteError) throw updateAthleteError;
-
-      // 4. Mark Token Used
-      await supabase
-        .from('token_claims')
-        .update({ used_at: new Date().toISOString() })
-        .eq('token_hash', token);
-
-      setAssignedBand(band);
+      setAssignedBand(claimedBand);
       setSuccess(true);
     } catch (err: any) {
       setError(err.message);
