@@ -66,7 +66,7 @@ export function useOfflineSync() {
             p_recorded_at: item.payload.recorded_at,
           });
           const result = Array.isArray(data) ? data[0] : data;
-
+          // If duplicate or already inserted, we still remove it from outbox
           if (!error && result) {
             await removeFromOutbox(item.id);
 
