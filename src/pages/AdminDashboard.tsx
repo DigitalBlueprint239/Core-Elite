@@ -21,9 +21,11 @@ import { DRILL_CATALOG } from '../constants';
 export default function AdminDashboard() {
   const [stats, setStats] = useState({
     athletes: 0,
+    waivers: 0,
     bands: 0,
     results: 0,
-    completed: 0
+    completed: 0,
+    reportsReady: 0
   });
   const [stations, setStations] = useState<any[]>([]);
   const [athletes, setAthletes] = useState<any[]>([]);
@@ -36,6 +38,7 @@ export default function AdminDashboard() {
       
       // 1. Fetch Stats
       const { count: athleteCount } = await supabase.from('athletes').select('*', { count: 'exact', head: true });
+      const { count: waiverCount } = await supabase.from('waivers').select('*', { count: 'exact', head: true });
       const { count: bandCount } = await supabase.from('bands').select('*', { count: 'exact', head: true }).eq('status', 'assigned');
       const { count: resultCount } = await supabase.from('results').select('*', { count: 'exact', head: true });
       
@@ -54,19 +57,24 @@ export default function AdminDashboard() {
       // 3. Fetch Athlete Progress
       const { data: athleteData } = await supabase
         .from('athletes')
-        .select('*, bands(display_number), results(drill_type)')
+        .select('*, events(required_drills), bands(display_number), waivers(id), results(drill_type, value_num), report_jobs(status, report_url, updated_at)')
         .order('created_at', { ascending: false });
+
+      const completedAthletes = athleteData?.filter(a => {
+        const requiredDrills = a.events?.required_drills || [];
+        const completedDrills = new Set((a.results || []).map((r: any) => r.drill_type));
+        return requiredDrills.length > 0 && requiredDrills.every((drill: string) => completedDrills.has(drill));
+      }).length || 0;
+
+      const reportsReady = athleteData?.filter(a => a.report_jobs?.some((job: any) => job.status === 'ready')).length || 0;
 
       setStats({
         athletes: athleteCount || 0,
+        waivers: waiverCount || 0,
         bands: bandCount || 0,
         results: resultCount || 0,
-        completed: athleteData?.filter(a => {
-          // Dynamic completion check: has results for all required drills of the event
-          // For now, we'll assume a simple check if they have at least 5 results as a fallback
-          // or if they have results for all unique drill types in the catalog (if event required_drills is not available)
-          return a.results?.length >= 5;
-        }).length || 0
+        completed: completedAthletes,
+        reportsReady
       });
       
       setStations(mergedStations);
@@ -150,9 +158,11 @@ export default function AdminDashboard() {
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <StatCard icon={<Users />} label="Athletes Registered" value={stats.athletes} color="blue" />
+          <StatCard icon={<CheckCircle />} label="Waivers Signed" value={stats.waivers} color="emerald" />
           <StatCard icon={<CreditCard />} label="Bands Assigned" value={stats.bands} color="purple" />
-          <StatCard icon={<Activity />} label="Results Captured" value={stats.results} color="emerald" />
-          <StatCard icon={<CheckCircle />} label="Completed Drills" value={stats.completed} color="amber" />
+          <StatCard icon={<Activity />} label="Results Captured" value={stats.results} color="blue" />
+          <StatCard icon={<CheckCircle />} label="Athletes Complete" value={stats.completed} color="amber" />
+          <StatCard icon={<Download />} label="Reports Ready" value={stats.reportsReady} color="purple" />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -201,20 +211,28 @@ export default function AdminDashboard() {
                           <div className="flex-1 h-2 bg-zinc-100 rounded-full overflow-hidden">
                             <div 
                               className="h-full bg-emerald-500 rounded-full" 
-                              style={{ width: `${Math.min((athlete.results?.length || 0) / 5 * 100, 100)}%` }}
+                              style={{ width: `${Math.min(((athlete.results?.length || 0) / Math.max(athlete.events?.required_drills?.length || 1, 1)) * 100, 100)}%` }}
                             />
                           </div>
-                          <span className="text-xs font-bold">{athlete.results?.length || 0}/5</span>
+                          <span className="text-xs font-bold">{athlete.results?.length || 0}/{athlete.events?.required_drills?.length || 0}</span>
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        {athlete.results?.length >= 5 ? (
+                        {athlete.report_jobs?.some((job: any) => job.status === 'ready') ? (
                           <span className="text-emerald-600 flex items-center gap-1 text-xs font-bold">
-                            <CheckCircle className="w-3 h-3" /> Ready
+                            <Download className="w-3 h-3" /> Report Ready
                           </span>
-                        ) : (
+                        ) : athlete.events?.required_drills?.length > 0 && athlete.events.required_drills.every((drill: string) => athlete.results?.some((result: any) => result.drill_type === drill)) ? (
+                          <span className="text-emerald-600 flex items-center gap-1 text-xs font-bold">
+                            <CheckCircle className="w-3 h-3" /> Ready for Report
+                          </span>
+                        ) : athlete.waivers?.length ? (
                           <span className="text-amber-600 flex items-center gap-1 text-xs font-bold">
                             <Activity className="w-3 h-3" /> Testing
+                          </span>
+                        ) : (
+                          <span className="text-red-600 flex items-center gap-1 text-xs font-bold">
+                            <AlertTriangle className="w-3 h-3" /> Needs Waiver
                           </span>
                         )}
                       </td>
