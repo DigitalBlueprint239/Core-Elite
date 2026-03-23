@@ -13,7 +13,7 @@ import { DRILL_CATALOG } from '../constants';
 export default function StationMode() {
   const { stationId } = useParams();
   const navigate = useNavigate();
-  const { isOnline, pendingCount, lastSyncTime, syncOutbox, updatePendingCount } = useOfflineSync();
+  const { isOnline, pendingCount, failedCount, lastSyncTime, lastSyncError, syncOutbox, retryFailedItems, updatePendingCount } = useOfflineSync();
 
   const [station, setStation] = useState<any>(null);
   const [athlete, setAthlete] = useState<any>(null);
@@ -96,8 +96,8 @@ export default function StationMode() {
       let athleteData: any = null;
       const cached = await getCachedAthlete(bandId);
       
-      if (cached) {
-        athleteData = cached;
+      if (cached && !isOnline) {
+        athleteData = { ...cached, isCached: true };
       } else if (isOnline) {
         const { data, error } = await supabase
           .from('bands')
@@ -130,12 +130,7 @@ export default function StationMode() {
         };
         await cacheAthlete(athleteData);
       } else {
-        athleteData = {
-          band_id: bandId,
-          display_number: '???',
-          name: 'Unknown (Offline)',
-          isUnknown: true
-        };
+        throw new Error('Band lookup requires a connection unless this athlete was scanned on this device earlier.');
       }
 
       if (laneMode) {
@@ -343,7 +338,7 @@ export default function StationMode() {
       )}
 
       {/* Sync Status Bar */}
-      <div className="mb-6 flex items-center justify-between p-3 bg-white rounded-2xl border border-zinc-100 shadow-sm">
+      <div className="mb-4 flex items-center justify-between p-3 bg-white rounded-2xl border border-zinc-100 shadow-sm">
         <div className="flex items-center gap-3">
           <div className={`p-2 rounded-lg ${pendingCount > 0 ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}>
             <RefreshCw className="w-4 h-4" />
@@ -361,6 +356,32 @@ export default function StationMode() {
           Sync Now
         </button>
       </div>
+
+      {(lastSyncError || failedCount > 0) && (
+        <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl text-amber-800 space-y-3">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+            <div>
+              <div className="font-bold text-sm">Sync attention needed</div>
+              <div className="text-xs">
+                {lastSyncError || `${failedCount} queued item${failedCount === 1 ? '' : 's'} need manual retry.`}
+              </div>
+              {failedCount > 0 && (
+                <div className="text-[11px] mt-1">Dead-lettered items: {failedCount}</div>
+              )}
+            </div>
+          </div>
+          {failedCount > 0 && (
+            <button
+              onClick={() => retryFailedItems()}
+              disabled={!isOnline}
+              className="px-3 py-2 bg-amber-600 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider hover:bg-amber-700 disabled:opacity-40 transition-all"
+            >
+              Retry Failed Items
+            </button>
+          )}
+        </div>
+      )}
 
       <AnimatePresence mode="wait">
         {laneMode ? (

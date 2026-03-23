@@ -1,28 +1,59 @@
 import { useEffect, useState, useCallback } from 'react';
-import { getOutboxItems, removeFromOutbox, OutboxItem } from '../lib/offline';
+import {
+  getPendingOutboxItems,
+  getOutboxItems,
+  removeFromOutbox,
+  resetFailedOutboxItems,
+  updateOutboxItem,
+} from '../lib/offline';
 import { supabase } from '../lib/supabase';
+
+const MAX_RETRY_ATTEMPTS = 5;
 
 export function useOfflineSync() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [pendingCount, setPendingCount] = useState(0);
+  const [failedCount, setFailedCount] = useState(0);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+  const [lastSyncError, setLastSyncError] = useState<string | null>(null);
 
   const updatePendingCount = useCallback(async () => {
     const items = await getOutboxItems();
-    setPendingCount(items.length);
+    setPendingCount(items.filter(item => item.status !== 'failed').length);
+    setFailedCount(items.filter(item => item.status === 'failed').length);
+  }, []);
+
+  const markSyncFailure = useCallback(async (itemId: string, currentAttempts: number, message: string) => {
+    const nextAttempts = currentAttempts + 1;
+    await updateOutboxItem(itemId, {
+      attempts: nextAttempts,
+      last_error: message,
+      status: nextAttempts >= MAX_RETRY_ATTEMPTS ? 'failed' : 'pending',
+    });
+    setLastSyncError(message);
   }, []);
 
   const syncOutbox = useCallback(async () => {
     if (!navigator.onLine) return;
 
-    const items = await getOutboxItems();
-    if (items.length === 0) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    const items = await getPendingOutboxItems();
 
-    console.log(`Syncing ${items.length} items...`);
+    if (items.length === 0) {
+      await updatePendingCount();
+      return;
+    }
+
+    setLastSyncError(null);
 
     for (const item of items) {
       try {
         if (item.type === 'result') {
+          if (!session) {
+            await markSyncFailure(item.id, item.attempts || 0, 'Staff session expired. Log in again before syncing queued items.');
+            continue;
+          }
+
           const { data, error } = await supabase.rpc('submit_result_atomic', {
             p_client_result_id: item.payload.client_result_id,
             p_event_id: item.payload.event_id,
@@ -39,7 +70,6 @@ export function useOfflineSync() {
           if (!error && result) {
             await removeFromOutbox(item.id);
 
-            // Check if athlete has completed all drills to trigger report
             try {
               const [{ data: athleteResults }, { data: eventData }] = await Promise.all([
                 supabase.from('results').select('drill_type').eq('athlete_id', item.payload.athlete_id),
@@ -49,7 +79,7 @@ export function useOfflineSync() {
               if (athleteResults && eventData?.required_drills) {
                 const completedDrills = new Set(athleteResults.map(r => r.drill_type));
                 const allDone = eventData.required_drills.every((d: string) => completedDrills.has(d));
-                
+
                 if (allDone) {
                   await supabase.from('report_jobs').upsert({
                     athlete_id: item.payload.athlete_id,
@@ -64,22 +94,32 @@ export function useOfflineSync() {
           } else if (error?.code === '23505') {
             await removeFromOutbox(item.id);
           } else {
-            console.error('Sync error for item', item.id, error);
+            await markSyncFailure(item.id, item.attempts || 0, error?.message || 'Result sync failed.');
           }
         } else if (item.type === 'device_status') {
           const { error } = await supabase.from('device_status').upsert(item.payload);
           if (!error) {
             await removeFromOutbox(item.id);
+          } else {
+            await markSyncFailure(item.id, item.attempts || 0, error.message || 'Device heartbeat sync failed.');
           }
         }
-      } catch (err) {
-        console.error('Failed to sync item', item.id, err);
+      } catch (err: any) {
+        await markSyncFailure(item.id, item.attempts || 0, err?.message || 'Unexpected sync failure.');
       }
     }
 
     await updatePendingCount();
     setLastSyncTime(new Date());
-  }, [updatePendingCount]);
+  }, [markSyncFailure, updatePendingCount]);
+
+  const retryFailedItems = useCallback(async () => {
+    await resetFailedOutboxItems();
+    await updatePendingCount();
+    if (navigator.onLine) {
+      await syncOutbox();
+    }
+  }, [syncOutbox, updatePendingCount]);
 
   useEffect(() => {
     const handleOnline = () => {
@@ -105,5 +145,14 @@ export function useOfflineSync() {
     };
   }, [syncOutbox, updatePendingCount]);
 
-  return { isOnline, pendingCount, lastSyncTime, syncOutbox, updatePendingCount };
+  return {
+    isOnline,
+    pendingCount,
+    failedCount,
+    lastSyncTime,
+    lastSyncError,
+    syncOutbox,
+    retryFailedItems,
+    updatePendingCount,
+  };
 }
