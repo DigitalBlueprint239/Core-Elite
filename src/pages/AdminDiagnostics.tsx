@@ -37,8 +37,7 @@ export default function AdminDiagnostics() {
     'profiles',
     'report_jobs',
     'device_status',
-    'incidents',
-    'parent_portals'
+    'incidents'
   ];
 
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';

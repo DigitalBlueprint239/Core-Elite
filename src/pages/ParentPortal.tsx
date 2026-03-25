@@ -24,40 +24,60 @@ export default function ParentPortal() {
   useEffect(() => {
     async function fetchPortalData() {
       setLoading(true);
-      
-      // 1. Get athlete_id from token
-      const { data: portal, error: portalError } = await supabase
-        .from('parent_portals')
-        .select('athlete_id, event_id')
-        .eq('portal_token', token)
-        .single();
+      setError(null);
 
-      if (portalError || !portal) {
-        setError('Invalid or expired portal link.');
+      if (!token) {
+        setError('Invalid portal link.');
         setLoading(false);
         return;
       }
 
-      // 2. Get athlete, event, results, and report job
-      const [athleteRes, eventRes, resultsRes, reportRes] = await Promise.all([
-        supabase.from('athletes').select('*').eq('id', portal.athlete_id).single(),
-        supabase.from('events').select('*').eq('id', portal.event_id).single(),
-        supabase.from('results').select('*').eq('athlete_id', portal.athlete_id),
-        supabase.from('report_jobs').select('*').eq('athlete_id', portal.athlete_id).order('created_at', { ascending: false }).limit(1).maybeSingle()
-      ]);
+      try {
+        // Production-safe fallback: resolve token directly from token_claims.
+        const { data: claim, error: claimError } = await supabase
+          .from('token_claims')
+          .select('athlete_id')
+          .eq('token', token)
+          .maybeSingle();
 
-      if (athleteRes.data && eventRes.data) {
-        setData({
-          athlete: athleteRes.data,
-          event: eventRes.data,
-          results: resultsRes.data || [],
-          report: reportRes.data
-        });
-      } else {
-        setError('Could not load athlete data.');
+        if (claimError) {
+          setError('Unable to load portal right now. Please try again later.');
+          return;
+        }
+
+        if (!claim?.athlete_id) {
+          setError('Portal links are unavailable in this environment. Use the athlete claim link instead.');
+          return;
+        }
+
+        // 2. Get athlete, event, results, and report job
+        const athleteRes = await supabase.from('athletes').select('*').eq('id', claim.athlete_id).maybeSingle();
+        if (!athleteRes.data || athleteRes.error) {
+          setError('Could not load athlete data.');
+          return;
+        }
+
+        const [eventRes, resultsRes, reportRes] = await Promise.all([
+          supabase.from('events').select('*').eq('id', athleteRes.data.event_id).maybeSingle(),
+          supabase.from('results').select('*').eq('athlete_id', claim.athlete_id),
+          supabase.from('report_jobs').select('*').eq('athlete_id', claim.athlete_id).order('created_at', { ascending: false }).limit(1).maybeSingle()
+        ]);
+
+        if (eventRes.data) {
+          setData({
+            athlete: athleteRes.data,
+            event: eventRes.data,
+            results: resultsRes.data || [],
+            report: reportRes.data
+          });
+        } else {
+          setError('Could not load event data for this athlete.');
+        }
+      } catch (err: any) {
+        setError(err?.message || 'Unable to load portal.');
+      } finally {
+        setLoading(false);
       }
-      
-      setLoading(false);
     }
 
     fetchPortalData();

@@ -26,22 +26,45 @@ export default function ClaimBand() {
     }
 
     async function fetchClaim() {
-      const { data: claim, error: claimError } = await supabase
-        .from('token_claims')
-        .select('*, athletes(*)')
-        .eq('token_hash', token)
-        .single();
+      try {
+        const { data: claim, error: claimError } = await supabase
+          .from('token_claims')
+          .select('athlete_id, expires_at, used, used_at')
+          .eq('token', token)
+          .maybeSingle();
 
-      if (claimError || !claim) {
-        setError('Claim session not found.');
-      } else if (claim.used_at) {
-        setError('This wristband has already been claimed.');
-      } else if (new Date(claim.expires_at) < new Date()) {
-        setError('Claim session has expired.');
-      } else {
-        setAthlete(claim.athletes);
+        if (claimError || !claim) {
+          setError('Claim session not found.');
+          return;
+        }
+
+        if (claim.used || claim.used_at) {
+          setError('This wristband has already been claimed.');
+          return;
+        }
+
+        if (!claim.expires_at || new Date(claim.expires_at) < new Date()) {
+          setError('Claim session has expired.');
+          return;
+        }
+
+        const { data: athleteData, error: athleteError } = await supabase
+          .from('athletes')
+          .select('*')
+          .eq('id', claim.athlete_id)
+          .maybeSingle();
+
+        if (athleteError || !athleteData) {
+          setError('Could not load athlete data for this claim.');
+          return;
+        }
+
+        setAthlete(athleteData);
+      } catch (err: any) {
+        setError(err?.message || 'Could not verify claim session.');
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
     fetchClaim();
   }, [token]);
