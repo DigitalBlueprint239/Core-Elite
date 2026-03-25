@@ -84,6 +84,10 @@ export default function ParentPortal() {
   const requiredCount = data.event.required_drills?.length || 5;
   const completedCount = data.results.length;
   const progress = Math.min((completedCount / requiredCount) * 100, 100);
+  const handleDownloadReport = () => {
+    if (!data.report?.report_url) return;
+    window.open(data.report.report_url, '_blank', 'noopener,noreferrer');
+  };
 
   return (
     <div className="min-h-screen bg-zinc-50 pb-12">
@@ -145,7 +149,13 @@ export default function ParentPortal() {
             </div>
           </div>
           {data.report?.status === 'ready' ? (
-            <button className="p-3 bg-zinc-900 text-white rounded-xl shadow-lg">
+            <button
+              type="button"
+              onClick={handleDownloadReport}
+              disabled={!data.report?.report_url}
+              title={data.report?.report_url ? 'Download report' : 'Report file is unavailable'}
+              className="p-3 bg-zinc-900 text-white rounded-xl shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               <Download className="w-5 h-5" />
             </button>
           ) : (
