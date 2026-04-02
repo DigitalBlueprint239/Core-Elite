@@ -24,60 +24,40 @@ export default function ParentPortal() {
   useEffect(() => {
     async function fetchPortalData() {
       setLoading(true);
-      setError(null);
+      
+      // 1. Get athlete_id from token
+      const { data: portal, error: portalError } = await supabase
+        .from('parent_portals')
+        .select('athlete_id, event_id')
+        .eq('portal_token', token)
+        .single();
 
-      if (!token) {
-        setError('Invalid portal link.');
+      if (portalError || !portal) {
+        setError('Invalid or expired portal link.');
         setLoading(false);
         return;
       }
 
-      try {
-        // Production-safe fallback: resolve token directly from token_claims.
-        const { data: claim, error: claimError } = await supabase
-          .from('token_claims')
-          .select('athlete_id')
-          .eq('token', token)
-          .maybeSingle();
+      // 2. Get athlete, event, results, and report job
+      const [athleteRes, eventRes, resultsRes, reportRes] = await Promise.all([
+        supabase.from('athletes').select('*').eq('id', portal.athlete_id).single(),
+        supabase.from('events').select('*').eq('id', portal.event_id).single(),
+        supabase.from('results').select('*').eq('athlete_id', portal.athlete_id),
+        supabase.from('report_jobs').select('*').eq('athlete_id', portal.athlete_id).order('created_at', { ascending: false }).limit(1).maybeSingle()
+      ]);
 
-        if (claimError) {
-          setError('Unable to load portal right now. Please try again later.');
-          return;
-        }
-
-        if (!claim?.athlete_id) {
-          setError('Portal links are unavailable in this environment. Use the athlete claim link instead.');
-          return;
-        }
-
-        // 2. Get athlete, event, results, and report job
-        const athleteRes = await supabase.from('athletes').select('*').eq('id', claim.athlete_id).maybeSingle();
-        if (!athleteRes.data || athleteRes.error) {
-          setError('Could not load athlete data.');
-          return;
-        }
-
-        const [eventRes, resultsRes, reportRes] = await Promise.all([
-          supabase.from('events').select('*').eq('id', athleteRes.data.event_id).maybeSingle(),
-          supabase.from('results').select('*').eq('athlete_id', claim.athlete_id),
-          supabase.from('report_jobs').select('*').eq('athlete_id', claim.athlete_id).order('created_at', { ascending: false }).limit(1).maybeSingle()
-        ]);
-
-        if (eventRes.data) {
-          setData({
-            athlete: athleteRes.data,
-            event: eventRes.data,
-            results: resultsRes.data || [],
-            report: reportRes.data
-          });
-        } else {
-          setError('Could not load event data for this athlete.');
-        }
-      } catch (err: any) {
-        setError(err?.message || 'Unable to load portal.');
-      } finally {
-        setLoading(false);
+      if (athleteRes.data && eventRes.data) {
+        setData({
+          athlete: athleteRes.data,
+          event: eventRes.data,
+          results: resultsRes.data || [],
+          report: reportRes.data
+        });
+      } else {
+        setError('Could not load athlete data.');
       }
+      
+      setLoading(false);
     }
 
     fetchPortalData();
@@ -104,10 +84,6 @@ export default function ParentPortal() {
   const requiredCount = data.event.required_drills?.length || 5;
   const completedCount = data.results.length;
   const progress = Math.min((completedCount / requiredCount) * 100, 100);
-  const handleDownloadReport = () => {
-    if (!data.report?.report_url) return;
-    window.open(data.report.report_url, '_blank', 'noopener,noreferrer');
-  };
 
   return (
     <div className="min-h-screen bg-zinc-50 pb-12">
@@ -169,13 +145,7 @@ export default function ParentPortal() {
             </div>
           </div>
           {data.report?.status === 'ready' ? (
-            <button
-              type="button"
-              onClick={handleDownloadReport}
-              disabled={!data.report?.report_url}
-              title={data.report?.report_url ? 'Download report' : 'Report file is unavailable'}
-              className="p-3 bg-zinc-900 text-white rounded-xl shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-            >
+            <button className="p-3 bg-zinc-900 text-white rounded-xl shadow-lg">
               <Download className="w-5 h-5" />
             </button>
           ) : (

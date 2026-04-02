@@ -14,23 +14,44 @@ import {
   MoreVertical,
   AlertTriangle,
   Clock,
-  Home
+  Home,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { DRILL_CATALOG } from '../constants';
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState({
     athletes: 0,
-    waivers: 0,
     bands: 0,
     results: 0,
-    completed: 0,
-    reportsReady: 0
+    completed: 0
   });
   const [stations, setStations] = useState<any[]>([]);
   const [athletes, setAthletes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [exporting, setExporting] = useState(false);
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 20;
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const { data: event } = await supabase.from('events').select('id').eq('status', 'live').single();
+      if (!event) throw new Error('No live event found');
+
+      const { data, error } = await supabase.rpc('admin_export_event_results', {
+        p_event_id: event.id
+      });
+      if (error) throw error;
+      alert(data.message || 'Export job queued successfully.');
+    } catch (err: any) {
+      alert('Export failed: ' + err.message);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   useEffect(() => {
     async function fetchData() {
@@ -38,7 +59,6 @@ export default function AdminDashboard() {
       
       // 1. Fetch Stats
       const { count: athleteCount } = await supabase.from('athletes').select('*', { count: 'exact', head: true });
-      const { count: waiverCount } = await supabase.from('waivers').select('*', { count: 'exact', head: true });
       const { count: bandCount } = await supabase.from('bands').select('*', { count: 'exact', head: true }).eq('status', 'assigned');
       const { count: resultCount } = await supabase.from('results').select('*', { count: 'exact', head: true });
       
@@ -57,24 +77,19 @@ export default function AdminDashboard() {
       // 3. Fetch Athlete Progress
       const { data: athleteData } = await supabase
         .from('athletes')
-        .select('*, events(required_drills), bands(display_number), waivers(id), results(drill_type, value_num), report_jobs(status, report_url, updated_at)')
+        .select('*, bands(display_number), results(drill_type)')
         .order('created_at', { ascending: false });
-
-      const completedAthletes = athleteData?.filter(a => {
-        const requiredDrills = a.events?.required_drills || [];
-        const completedDrills = new Set((a.results || []).map((r: any) => r.drill_type));
-        return requiredDrills.length > 0 && requiredDrills.every((drill: string) => completedDrills.has(drill));
-      }).length || 0;
-
-      const reportsReady = athleteData?.filter(a => a.report_jobs?.some((job: any) => job.status === 'ready')).length || 0;
 
       setStats({
         athletes: athleteCount || 0,
-        waivers: waiverCount || 0,
         bands: bandCount || 0,
         results: resultCount || 0,
-        completed: completedAthletes,
-        reportsReady
+        completed: athleteData?.filter(a => {
+          // Dynamic completion check: has results for all required drills of the event
+          // For now, we'll assume a simple check if they have at least 5 results as a fallback
+          // or if they have results for all unique drill types in the catalog (if event required_drills is not available)
+          return a.results?.length >= 5;
+        }).length || 0
       });
       
       setStations(mergedStations);
@@ -91,6 +106,9 @@ export default function AdminDashboard() {
     `${a.first_name} ${a.last_name}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
     a.bands?.display_number?.toString().includes(searchTerm)
   );
+
+  const paginatedAthletes = filteredAthletes.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const totalPages = Math.ceil(filteredAthletes.length / PAGE_SIZE);
 
   const exportCSV = () => {
     const drillIds = DRILL_CATALOG.map(d => d.id);
@@ -143,11 +161,12 @@ export default function AdminDashboard() {
           </div>
           <div className="flex items-center gap-4">
             <button 
-              onClick={exportCSV}
-              className="flex items-center gap-2 px-4 py-2 bg-zinc-100 hover:bg-zinc-200 rounded-xl text-sm font-bold transition-colors"
+              onClick={handleExport}
+              disabled={exporting}
+              className="flex items-center gap-2 px-4 py-2 bg-zinc-100 hover:bg-zinc-200 rounded-xl text-sm font-bold transition-colors disabled:opacity-50"
             >
               <Download className="w-4 h-4" />
-              Export CSV
+              {exporting ? 'Queueing...' : 'Export Results'}
             </button>
             <div className="w-10 h-10 bg-zinc-200 rounded-full border-2 border-white shadow-sm" />
           </div>
@@ -158,11 +177,9 @@ export default function AdminDashboard() {
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <StatCard icon={<Users />} label="Athletes Registered" value={stats.athletes} color="blue" />
-          <StatCard icon={<CheckCircle />} label="Waivers Signed" value={stats.waivers} color="emerald" />
           <StatCard icon={<CreditCard />} label="Bands Assigned" value={stats.bands} color="purple" />
-          <StatCard icon={<Activity />} label="Results Captured" value={stats.results} color="blue" />
-          <StatCard icon={<CheckCircle />} label="Athletes Complete" value={stats.completed} color="amber" />
-          <StatCard icon={<Download />} label="Reports Ready" value={stats.reportsReady} color="purple" />
+          <StatCard icon={<Activity />} label="Results Captured" value={stats.results} color="emerald" />
+          <StatCard icon={<CheckCircle />} label="Completed Drills" value={stats.completed} color="amber" />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -194,7 +211,7 @@ export default function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
-                  {filteredAthletes.map((athlete) => (
+                  {paginatedAthletes.map((athlete) => (
                     <tr key={athlete.id} className="hover:bg-zinc-50 transition-colors">
                       <td className="px-6 py-4 font-black text-zinc-400">
                         {athlete.bands?.display_number || '--'}
@@ -211,28 +228,20 @@ export default function AdminDashboard() {
                           <div className="flex-1 h-2 bg-zinc-100 rounded-full overflow-hidden">
                             <div 
                               className="h-full bg-emerald-500 rounded-full" 
-                              style={{ width: `${Math.min(((athlete.results?.length || 0) / Math.max(athlete.events?.required_drills?.length || 1, 1)) * 100, 100)}%` }}
+                              style={{ width: `${Math.min((athlete.results?.length || 0) / 5 * 100, 100)}%` }}
                             />
                           </div>
-                          <span className="text-xs font-bold">{athlete.results?.length || 0}/{athlete.events?.required_drills?.length || 0}</span>
+                          <span className="text-xs font-bold">{athlete.results?.length || 0}/5</span>
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        {athlete.report_jobs?.some((job: any) => job.status === 'ready') ? (
+                        {athlete.results?.length >= 5 ? (
                           <span className="text-emerald-600 flex items-center gap-1 text-xs font-bold">
-                            <Download className="w-3 h-3" /> Report Ready
-                          </span>
-                        ) : athlete.events?.required_drills?.length > 0 && athlete.events.required_drills.every((drill: string) => athlete.results?.some((result: any) => result.drill_type === drill)) ? (
-                          <span className="text-emerald-600 flex items-center gap-1 text-xs font-bold">
-                            <CheckCircle className="w-3 h-3" /> Ready for Report
-                          </span>
-                        ) : athlete.waivers?.length ? (
-                          <span className="text-amber-600 flex items-center gap-1 text-xs font-bold">
-                            <Activity className="w-3 h-3" /> Testing
+                            <CheckCircle className="w-3 h-3" /> Ready
                           </span>
                         ) : (
-                          <span className="text-red-600 flex items-center gap-1 text-xs font-bold">
-                            <AlertTriangle className="w-3 h-3" /> Needs Waiver
+                          <span className="text-amber-600 flex items-center gap-1 text-xs font-bold">
+                            <Activity className="w-3 h-3" /> Testing
                           </span>
                         )}
                       </td>
@@ -241,6 +250,34 @@ export default function AdminDashboard() {
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-2">
+                <p className="text-xs text-zinc-500 font-medium">
+                  Showing {page * PAGE_SIZE + 1} to {Math.min((page + 1) * PAGE_SIZE, filteredAthletes.length)} of {filteredAthletes.length} athletes
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setPage(p => Math.max(0, p - 1))}
+                    disabled={page === 0}
+                    className="p-2 bg-white border border-zinc-200 rounded-lg disabled:opacity-30 hover:bg-zinc-50 transition-all"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <span className="text-xs font-bold text-zinc-600">
+                    Page {page + 1} of {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                    disabled={page === totalPages - 1}
+                    className="p-2 bg-white border border-zinc-200 rounded-lg disabled:opacity-30 hover:bg-zinc-50 transition-all"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Station Health */}

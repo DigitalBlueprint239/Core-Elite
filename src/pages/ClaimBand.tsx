@@ -26,45 +26,22 @@ export default function ClaimBand() {
     }
 
     async function fetchClaim() {
-      try {
-        const { data: claim, error: claimError } = await supabase
-          .from('token_claims')
-          .select('athlete_id, expires_at, used, used_at')
-          .eq('token', token)
-          .maybeSingle();
+      const { data: claim, error: claimError } = await supabase
+        .from('token_claims')
+        .select('*, athletes(*)')
+        .eq('token_hash', token)
+        .single();
 
-        if (claimError || !claim) {
-          setError('Claim session not found.');
-          return;
-        }
-
-        if (claim.used || claim.used_at) {
-          setError('This wristband has already been claimed.');
-          return;
-        }
-
-        if (!claim.expires_at || new Date(claim.expires_at) < new Date()) {
-          setError('Claim session has expired.');
-          return;
-        }
-
-        const { data: athleteData, error: athleteError } = await supabase
-          .from('athletes')
-          .select('*')
-          .eq('id', claim.athlete_id)
-          .maybeSingle();
-
-        if (athleteError || !athleteData) {
-          setError('Could not load athlete data for this claim.');
-          return;
-        }
-
-        setAthlete(athleteData);
-      } catch (err: any) {
-        setError(err?.message || 'Could not verify claim session.');
-      } finally {
-        setLoading(false);
+      if (claimError || !claim) {
+        setError('Claim session not found.');
+      } else if (claim.used_at) {
+        setError('This wristband has already been claimed.');
+      } else if (new Date(claim.expires_at) < new Date()) {
+        setError('Claim session has expired.');
+      } else {
+        setAthlete(claim.athletes);
       }
+      setLoading(false);
     }
     fetchClaim();
   }, [token]);
@@ -75,17 +52,17 @@ export default function ClaimBand() {
     setError(null);
 
     try {
-      const { data, error: claimError } = await supabase.rpc('claim_band_atomic', {
+      // Atomic Claim Logic via RPC
+      const { data, error: rpcError } = await supabase.rpc('claim_band_atomic', {
         p_token: token,
         p_band_id: bandId,
+        p_device_label: 'client-web'
       });
 
-      if (claimError) throw claimError;
+      if (rpcError) throw rpcError;
+      if (!data?.success) throw new Error(data?.error || 'Failed to claim wristband.');
 
-      const claimedBand = Array.isArray(data) ? data[0] : data;
-      if (!claimedBand) throw new Error('Band claim did not return a band record.');
-
-      setAssignedBand(claimedBand);
+      setAssignedBand({ display_number: data.display_number });
       setSuccess(true);
     } catch (err: any) {
       setError(err.message);

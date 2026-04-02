@@ -27,7 +27,7 @@ export default function AdminLogin() {
       const { data: profile } = await supabase
         .from('profiles')
         .select('role')
-        .eq('user_id', user.id)
+        .eq('id', user.id)
         .single();
 
       if (profile?.role === 'admin') {
@@ -76,7 +76,8 @@ export default function AdminLogin() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full p-3 bg-zinc-50 border border-zinc-200 rounded-xl outline-none focus:ring-2 focus:ring-zinc-900"
-              placeholder="admin@coreelite.com"
+              placeholder="Enter your email"
+              autoComplete="username"
               required
             />
           </div>
@@ -88,7 +89,8 @@ export default function AdminLogin() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full p-3 bg-zinc-50 border border-zinc-200 rounded-xl outline-none focus:ring-2 focus:ring-zinc-900"
-              placeholder="••••••••"
+              placeholder="Enter your password"
+              autoComplete="current-password"
               required
             />
           </div>

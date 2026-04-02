@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { athleteRegistrationSchema } from '../lib/types';
+import { z } from 'zod';
 import { SignatureCanvas } from '../components/SignatureCanvas';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronRight, CheckCircle2, AlertCircle, ArrowLeft } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
-import { Link } from 'react-router-dom';
 
 export default function Register() {
   const [searchParams] = useSearchParams();
@@ -36,6 +37,23 @@ export default function Register() {
 
   const [signature, setSignature] = useState<string | null>(null);
   const [dateOfBirthError, setDateOfBirthError] = useState<string | null>(null);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    async function checkAdmin() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', session.user.id)
+          .single();
+        setIsAdmin(profile?.role === 'admin');
+      }
+    }
+    checkAdmin();
+  }, []);
 
   useEffect(() => {
     async function resolveEvent() {
@@ -143,51 +161,51 @@ export default function Register() {
   };
 
   const handleSubmit = async () => {
-    if (!signature || loading || !event) return;
+    if (!signature) return;
+    
+    // Validate with Zod
+    try {
+      athleteRegistrationSchema.parse(formData);
+      setFormErrors({});
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        const errors: Record<string, string> = {};
+        err.issues.forEach(e => {
+          if (e.path[0]) errors[e.path[0] as string] = e.message;
+        });
+        setFormErrors(errors);
+        return;
+      }
+    }
+
     setLoading(true);
-    setError(null);
 
     try {
-      const token = uuidv4();
-      const expiresAt = new Date();
-      expiresAt.setHours(expiresAt.getHours() + 2);
-      const portalToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-
-      const { data, error: registrationError } = await supabase.rpc('register_athlete_atomic', {
+      const { data, error: rpcError } = await supabase.rpc('register_athlete_secure', {
         p_event_id: event.id,
-        p_athlete: {
-          first_name: formData.firstName,
-          last_name: formData.lastName,
-          date_of_birth: formData.date_of_birth,
-          grade: formData.grade,
-          position: formData.position,
-          parent_name: formData.parentName,
-          parent_email: formData.parentEmail,
-          parent_phone: formData.parentPhone,
-        },
-        p_waiver: {
-          guardian_name: formData.parentName,
-          guardian_relationship: formData.guardianRelationship,
-          emergency_contact_name: formData.emergencyContactName,
-          emergency_contact_phone: formData.emergencyContactPhone,
-          signature_data_url: signature,
-          injury_waiver_ack: formData.injuryWaiverAck,
-          media_release: formData.mediaRelease,
-          data_consent: formData.dataConsent,
-          marketing_consent: formData.marketingConsent,
-          waiver_version: '2026.1',
-        },
-        p_claim_token: token,
-        p_claim_expires_at: expiresAt.toISOString(),
-        p_portal_token: portalToken,
+        p_first_name: formData.firstName,
+        p_last_name: formData.lastName,
+        p_date_of_birth: formData.date_of_birth,
+        p_grade: formData.grade,
+        p_position: formData.position,
+        p_parent_name: formData.parentName,
+        p_parent_email: formData.parentEmail,
+        p_parent_phone: formData.parentPhone,
+        p_guardian_relationship: formData.guardianRelationship,
+        p_emergency_contact_name: formData.emergencyContactName,
+        p_emergency_contact_phone: formData.emergencyContactPhone,
+        p_signature_data_url: signature,
+        p_injury_waiver_ack: formData.injuryWaiverAck,
+        p_media_release: formData.mediaRelease,
+        p_data_consent: formData.dataConsent,
+        p_marketing_consent: formData.marketingConsent
       });
 
-      if (registrationError) throw registrationError;
+      if (rpcError) throw rpcError;
+      if (!data?.success) throw new Error(data?.error || 'Registration failed');
 
-      const registration = Array.isArray(data) ? data[0] : data;
-      const claimToken = registration?.claim_token || token;
-
-      navigate(`/claim-band?athleteToken=${claimToken}`);
+      // Success!
+      navigate(`/claim-band?athleteToken=${data.claim_token}`);
     } catch (err: any) {
       setError({ message: 'Registration failed.', details: err.message });
       setLoading(false);
@@ -249,8 +267,12 @@ export default function Register() {
             <AlertCircle className="w-8 h-8" />
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-zinc-900 mb-2">{error.message}</h2>
-            <p className="text-zinc-500 text-sm">{error.details}</p>
+            <h2 className="text-2xl font-bold text-zinc-900 mb-2">
+              {(isAdmin || import.meta.env.DEV) ? error.message : "We’re having trouble loading registration right now"}
+            </h2>
+            <p className="text-zinc-500 text-sm">
+              {(isAdmin || import.meta.env.DEV) ? error.details : "Please try again in a moment. If the issue continues, ask event staff for help."}
+            </p>
           </div>
           <div className="pt-4 space-y-3">
             <button 
@@ -266,7 +288,7 @@ export default function Register() {
               Return Home
             </button>
           </div>
-          {import.meta.env.DEV && (
+          {(isAdmin || import.meta.env.DEV) && (
             <div className="mt-8 p-4 bg-zinc-50 rounded-xl text-left">
               <p className="text-[10px] font-bold uppercase text-zinc-400 mb-2">Admin Troubleshooting</p>
               <ul className="text-[10px] text-zinc-500 list-disc pl-4 space-y-1">
@@ -527,8 +549,14 @@ export default function Register() {
               <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-600 text-sm">
                 <AlertCircle className="w-5 h-5" />
                 <div>
-                  <div className="font-bold">{error.message}</div>
-                  {error.details && <div className="text-[10px] opacity-70">{error.details}</div>}
+                  <div className="font-bold">
+                    {(isAdmin || import.meta.env.DEV) ? error.message : "Registration failed"}
+                  </div>
+                  {error.details && (
+                    <div className="text-[10px] opacity-70">
+                      {(isAdmin || import.meta.env.DEV) ? error.details : "Please check your information and try again."}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

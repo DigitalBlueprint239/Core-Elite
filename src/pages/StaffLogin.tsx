@@ -21,8 +21,13 @@ export default function StaffLogin() {
       setError(error.message);
       setLoading(false);
     } else {
-      // In a real app, we'd fetch the station config or list
-      navigate('/staff/station/SPEED-1');
+      // Check for last used station
+      const lastStation = localStorage.getItem('last_station_id');
+      if (lastStation) {
+        navigate(`/staff/station/${lastStation}`);
+      } else {
+        navigate('/staff/select-station');
+      }
     }
   };
 
@@ -62,7 +67,8 @@ export default function StaffLogin() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full p-3 bg-zinc-50 border border-zinc-200 rounded-xl outline-none focus:ring-2 focus:ring-zinc-900"
-              placeholder="coach@coreelite.com"
+              placeholder="Enter your email"
+              autoComplete="username"
               required
             />
           </div>
@@ -74,7 +80,8 @@ export default function StaffLogin() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full p-3 bg-zinc-50 border border-zinc-200 rounded-xl outline-none focus:ring-2 focus:ring-zinc-900"
-              placeholder="••••••••"
+              placeholder="Enter your password"
+              autoComplete="current-password"
               required
             />
           </div>

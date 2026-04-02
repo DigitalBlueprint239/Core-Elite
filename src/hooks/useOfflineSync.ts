@@ -1,125 +1,102 @@
 import { useEffect, useState, useCallback } from 'react';
-import {
-  getPendingOutboxItems,
-  getOutboxItems,
-  removeFromOutbox,
-  resetFailedOutboxItems,
-  updateOutboxItem,
-} from '../lib/offline';
+import { getOutboxItems, removeFromOutbox, updateOutboxItem, OutboxItem } from '../lib/offline';
 import { supabase } from '../lib/supabase';
 
-const MAX_RETRY_ATTEMPTS = 5;
+const MAX_RETRIES = 5;
 
 export function useOfflineSync() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [pendingCount, setPendingCount] = useState(0);
-  const [failedCount, setFailedCount] = useState(0);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
-  const [lastSyncError, setLastSyncError] = useState<string | null>(null);
 
   const updatePendingCount = useCallback(async () => {
     const items = await getOutboxItems();
-    setPendingCount(items.filter(item => item.status !== 'failed').length);
-    setFailedCount(items.filter(item => item.status === 'failed').length);
-  }, []);
-
-  const markSyncFailure = useCallback(async (itemId: string, currentAttempts: number, message: string) => {
-    const nextAttempts = currentAttempts + 1;
-    await updateOutboxItem(itemId, {
-      attempts: nextAttempts,
-      last_error: message,
-      status: nextAttempts >= MAX_RETRY_ATTEMPTS ? 'failed' : 'pending',
-    });
-    setLastSyncError(message);
+    setPendingCount(items.filter(i => i.status !== 'dead_letter').length);
   }, []);
 
   const syncOutbox = useCallback(async () => {
     if (!navigator.onLine) return;
 
-    const { data: { session } } = await supabase.auth.getSession();
-    const items = await getPendingOutboxItems();
+    const items = await getOutboxItems();
+    const syncableItems = items.filter(i => i.status === 'pending' || i.status === 'retrying');
+    
+    if (syncableItems.length === 0) return;
 
-    if (items.length === 0) {
-      await updatePendingCount();
-      return;
-    }
+    console.log(`Syncing ${syncableItems.length} items...`);
 
-    setLastSyncError(null);
+    for (const item of syncableItems) {
+      // Check if item is ready for retry (exponential backoff)
+      if (item.retry_count > 0 && item.last_attempt_at) {
+        const backoffMs = Math.pow(2, item.retry_count) * 1000;
+        if (Date.now() - item.last_attempt_at < backoffMs) {
+          continue;
+        }
+      }
 
-    for (const item of items) {
       try {
-        if (item.type === 'result') {
-          if (!session) {
-            await markSyncFailure(item.id, item.attempts || 0, 'Staff session expired. Log in again before syncing queued items.');
-            continue;
-          }
+        let success = false;
+        let errorMsg = '';
 
-          const { data, error } = await supabase.rpc('submit_result_atomic', {
-            p_client_result_id: item.payload.client_result_id,
+        if (item.type === 'result') {
+          // Use RPC for result submission
+          const { data, error } = await supabase.rpc('submit_result_secure', {
+            p_client_result_id: item.id,
             p_event_id: item.payload.event_id,
             p_athlete_id: item.payload.athlete_id,
             p_band_id: item.payload.band_id,
             p_station_id: item.payload.station_id,
             p_drill_type: item.payload.drill_type,
             p_value_num: item.payload.value_num,
-            p_meta: item.payload.meta || {},
-            p_recorded_at: item.payload.recorded_at,
+            p_meta: item.payload.meta || {}
           });
-          const result = Array.isArray(data) ? data[0] : data;
-          // If duplicate or already inserted, we still remove it from outbox
-          if (!error && result) {
-            await removeFromOutbox(item.id);
 
-            try {
-              const [{ data: athleteResults }, { data: eventData }] = await Promise.all([
-                supabase.from('results').select('drill_type').eq('athlete_id', item.payload.athlete_id),
-                supabase.from('events').select('required_drills').eq('id', item.payload.event_id).single()
-              ]);
-
-              if (athleteResults && eventData?.required_drills) {
-                const completedDrills = new Set(athleteResults.map(r => r.drill_type));
-                const allDone = eventData.required_drills.every((d: string) => completedDrills.has(d));
-
-                if (allDone) {
-                  await supabase.from('report_jobs').upsert({
-                    athlete_id: item.payload.athlete_id,
-                    event_id: item.payload.event_id,
-                    status: 'pending'
-                  }, { onConflict: 'athlete_id' });
-                }
-              }
-            } catch (e) {
-              console.error('Report trigger check failed', e);
-            }
-          } else if (error?.code === '23505') {
-            await removeFromOutbox(item.id);
+          if (!error && data?.success) {
+            success = true;
           } else {
-            await markSyncFailure(item.id, item.attempts || 0, error?.message || 'Result sync failed.');
+            errorMsg = error?.message || data?.error || 'Unknown RPC error';
+            // If error is duplicate, we consider it success
+            if (errorMsg.includes('duplicate') || (data && data.status === 'duplicate')) {
+              success = true;
+            }
           }
         } else if (item.type === 'device_status') {
           const { error } = await supabase.from('device_status').upsert(item.payload);
           if (!error) {
-            await removeFromOutbox(item.id);
+            success = true;
           } else {
-            await markSyncFailure(item.id, item.attempts || 0, error.message || 'Device heartbeat sync failed.');
+            errorMsg = error.message;
           }
         }
+
+        if (success) {
+          await removeFromOutbox(item.id);
+        } else {
+          // Handle failure with retry logic
+          const updatedItem: OutboxItem = {
+            ...item,
+            retry_count: item.retry_count + 1,
+            last_attempt_at: Date.now(),
+            error_message: errorMsg,
+            status: item.retry_count + 1 >= MAX_RETRIES ? 'dead_letter' : 'retrying'
+          };
+          await updateOutboxItem(updatedItem);
+        }
       } catch (err: any) {
-        await markSyncFailure(item.id, item.attempts || 0, err?.message || 'Unexpected sync failure.');
+        console.error('Failed to sync item', item.id, err);
+        const updatedItem: OutboxItem = {
+          ...item,
+          retry_count: item.retry_count + 1,
+          last_attempt_at: Date.now(),
+          error_message: err.message,
+          status: item.retry_count + 1 >= MAX_RETRIES ? 'dead_letter' : 'retrying'
+        };
+        await updateOutboxItem(updatedItem);
       }
     }
 
     await updatePendingCount();
     setLastSyncTime(new Date());
-  }, [markSyncFailure, updatePendingCount]);
-
-  const retryFailedItems = useCallback(async () => {
-    await resetFailedOutboxItems();
-    await updatePendingCount();
-    if (navigator.onLine) {
-      await syncOutbox();
-    }
-  }, [syncOutbox, updatePendingCount]);
+  }, [updatePendingCount]);
 
   useEffect(() => {
     const handleOnline = () => {
@@ -145,14 +122,5 @@ export function useOfflineSync() {
     };
   }, [syncOutbox, updatePendingCount]);
 
-  return {
-    isOnline,
-    pendingCount,
-    failedCount,
-    lastSyncTime,
-    lastSyncError,
-    syncOutbox,
-    retryFailedItems,
-    updatePendingCount,
-  };
+  return { isOnline, pendingCount, lastSyncTime, syncOutbox, updatePendingCount };
 }
