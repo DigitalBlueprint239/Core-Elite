@@ -95,3 +95,23 @@ export async function clearAthleteCache() {
   const db = await initDB();
   await db.clear('athlete_cache');
 }
+
+export async function getDeadLetterItems(): Promise<OutboxItem[]> {
+  const db = await initDB();
+  const all = await db.getAll('outbox');
+  return all.filter(i => i.status === 'dead_letter');
+}
+
+export async function resetDeadLetterItem(id: string) {
+  const db = await initDB();
+  const item = await db.get('outbox', id);
+  if (!item) return;
+  await db.put('outbox', {
+    ...item,
+    status: 'pending',
+    retry_count: 0,
+    attempts: 0,
+    error_message: undefined,
+    last_attempt_at: undefined
+  });
+}

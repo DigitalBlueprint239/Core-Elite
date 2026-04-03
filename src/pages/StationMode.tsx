@@ -11,11 +11,12 @@ import { v4 as uuidv4 } from 'uuid';
 import { getDeviceId } from '../lib/device';
 import { tick } from '../lib/hlc';
 import { DRILL_CATALOG } from '../constants';
+import { validateResult } from '../lib/scoring';
 
 export default function StationMode() {
   const { stationId } = useParams();
   const navigate = useNavigate();
-  const { isOnline, pendingCount, lastSyncTime, syncOutbox, updatePendingCount } = useOfflineSync();
+  const { isOnline, pendingCount, requiresForceSync, lastSyncTime, syncOutbox, forceSync, updatePendingCount } = useOfflineSync();
 
   const [station, setStation] = useState<Station | null>(null);
   const [athlete, setAthlete] = useState<Athlete | any>(null);
@@ -34,6 +35,12 @@ export default function StationMode() {
   const [incidentType, setIncidentType] = useState('other');
   const [incidentDesc, setIncidentDesc] = useState('');
   const [incidentSeverity, setIncidentSeverity] = useState<'low' | 'medium' | 'high' | 'critical'>('medium');
+  const [scoutReviewPending, setScoutReviewPending] = useState<{
+    flaggedValue: number;
+    reason: string;
+    payload: any;
+    clientResultId: string;
+  } | null>(null);
 
   useEffect(() => {
     async function fetchStation() {
@@ -186,6 +193,36 @@ export default function StationMode() {
       }
     }
 
+    // Gate 4 — extraordinary_result intercept (Phase 4 fail-soft)
+    // validateResult runs the full 4-gate pipeline; we only intercept Gate 4 here.
+    // Gates 1–3 are hard physical-impossibility failures and should not be silently
+    // confirmed by a scout — treat them as validation errors upstream.
+    const gateCheck = validateResult(station.drill_type, finalValue);
+    if (!gateCheck.valid && gateCheck.gate === 'extraordinary_result') {
+      const clientResultId = uuidv4();
+      const payload = {
+        client_result_id: clientResultId,
+        event_id: station.event_id,
+        athlete_id: athlete.athlete_id,
+        band_id: athlete.band_id,
+        station_id: station.id,
+        drill_type: station.drill_type,
+        value_num: finalValue,
+        meta: {
+          attempts: newAttempts,
+          outlier: true,
+          outlier_reason: 'scout_review_confirmed',
+          extraordinary_result: true,
+          gate4_reason: gateCheck.reason,
+          device_id: getDeviceId()
+        },
+        recorded_at: new Date().toISOString()
+      };
+      setScoutReviewPending({ flaggedValue: finalValue, reason: gateCheck.reason, payload, clientResultId });
+      setSubmitting(false);
+      return;
+    }
+
     const clientResultId = uuidv4();
     // Generate HLC once for this mutation. Passed to both meta (for server-side
     // LWW resolution) and the outbox item (for client-side ordering).
@@ -242,6 +279,44 @@ export default function StationMode() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleScoutConfirm = async () => {
+    if (!scoutReviewPending || !athlete) return;
+    setSubmitting(true);
+    try {
+      await addToOutbox({
+        id: scoutReviewPending.clientResultId,
+        type: 'result',
+        payload: scoutReviewPending.payload,
+        timestamp: Date.now(),
+        attempts: 0
+      });
+      await updatePendingCount();
+      setLastSubmitted({
+        athleteName: athlete.name,
+        athleteNumber: athlete.display_number,
+        value: scoutReviewPending.flaggedValue,
+        attempts: []
+      });
+      setScoutReviewPending(null);
+      setAthlete(null);
+      setResultValue('');
+      setAttempts([]);
+      setOutlierReason('');
+      setShowOutlierModal(false);
+      setScanning(true);
+    } catch (err) {
+      setError('Failed to save result locally.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleScoutDiscard = () => {
+    setScoutReviewPending(null);
+    setResultValue('');
+    setAttempts([]);
   };
 
   const handleLaneSubmit = async (index: number) => {
@@ -354,23 +429,45 @@ export default function StationMode() {
       )}
 
       {/* Sync Status Bar */}
-      <div className="mb-6 flex items-center justify-between p-3 bg-white rounded-2xl border border-zinc-100 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className={`p-2 rounded-lg ${pendingCount > 0 ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}>
-            <RefreshCw className="w-4 h-4" />
+      <div className="mb-4 space-y-2">
+        <div className="flex items-center justify-between p-3 bg-white rounded-2xl border border-zinc-100 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className={`p-2 rounded-lg ${pendingCount > 0 ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}>
+              <RefreshCw className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="text-[10px] font-bold uppercase text-zinc-400 leading-none">Pending Sync</div>
+              <div className="text-sm font-black">{pendingCount} items</div>
+            </div>
           </div>
-          <div>
-            <div className="text-[10px] font-bold uppercase text-zinc-400 leading-none">Pending Sync</div>
-            <div className="text-sm font-black">{pendingCount} items</div>
-          </div>
+          <button
+            onClick={() => syncOutbox()}
+            disabled={!isOnline || pendingCount === 0}
+            className="px-3 py-1.5 bg-zinc-900 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider hover:bg-zinc-800 disabled:opacity-30 transition-all"
+          >
+            Sync Now
+          </button>
         </div>
-        <button 
-          onClick={() => syncOutbox()}
-          disabled={!isOnline || pendingCount === 0}
-          className="px-3 py-1.5 bg-zinc-900 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider hover:bg-zinc-800 disabled:opacity-30 transition-all"
-        >
-          Sync Now
-        </button>
+        {requiresForceSync > 0 && (
+          <div className="flex items-center justify-between p-3 bg-red-50 rounded-2xl border border-red-200">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-red-100 text-red-600">
+                <AlertCircle className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="text-[10px] font-bold uppercase text-red-500 leading-none">Sync Failed</div>
+                <div className="text-sm font-black text-red-700">{requiresForceSync} item{requiresForceSync > 1 ? 's' : ''} stuck</div>
+              </div>
+            </div>
+            <button
+              onClick={() => forceSync()}
+              disabled={!isOnline}
+              className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider hover:bg-red-700 disabled:opacity-40 transition-all"
+            >
+              Force Sync
+            </button>
+          </div>
+        )}
       </div>
 
       <AnimatePresence mode="wait">
@@ -673,6 +770,53 @@ export default function StationMode() {
                   className="flex-1 py-3 bg-zinc-900 text-white rounded-xl font-bold"
                 >
                   Confirm
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {scoutReviewPending && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-zinc-900/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="bg-white w-full max-w-sm rounded-3xl p-8 space-y-6 shadow-2xl"
+            >
+              <div className="text-center space-y-2">
+                <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <ShieldAlert className="w-8 h-8" />
+                </div>
+                <h3 className="text-xl font-bold">Scout Review Required</h3>
+                <p className="text-zinc-500 text-sm">This result requires manual confirmation before it can be recorded.</p>
+              </div>
+
+              <div className="bg-zinc-50 rounded-2xl p-4 space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold uppercase text-zinc-400">Flagged Value</span>
+                  <span className="text-lg font-black text-zinc-900">{scoutReviewPending.flaggedValue}</span>
+                </div>
+                <div className="pt-1 border-t border-zinc-200">
+                  <p className="text-xs text-zinc-500 leading-relaxed">{scoutReviewPending.reason}</p>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={handleScoutDiscard}
+                  className="flex-1 py-3 border border-zinc-200 rounded-xl font-bold text-zinc-500 hover:bg-zinc-50 transition-colors"
+                >
+                  Discard
+                </button>
+                <button
+                  onClick={handleScoutConfirm}
+                  disabled={submitting}
+                  className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold shadow-lg shadow-red-200 hover:bg-red-700 disabled:opacity-50 transition-colors"
+                >
+                  {submitting ? 'Saving...' : 'Confirm Result'}
                 </button>
               </div>
             </motion.div>
