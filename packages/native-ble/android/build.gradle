@@ -1,0 +1,61 @@
+// =============================================================================
+// build.gradle — packages/native-ble/android
+// Core Elite — @core-elite/native-ble Android module build
+// =============================================================================
+
+buildscript {
+    ext.kotlin_version = "1.9.22"
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath "com.android.tools.build:gradle:8.2.0"
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+
+apply plugin: "com.android.library"
+apply plugin: "kotlin-android"
+
+android {
+    compileSdk 34
+    namespace "com.coreelite.ble"
+
+    defaultConfig {
+        minSdk 24   // Android 7.0 — BluetoothGatt reliable below API 24 is not guaranteed
+        targetSdk 34
+
+        // ConcurrentLinkedQueue and SystemClock.uptimeNanos() available from API 1
+        // BluetoothGatt.CONNECTION_PRIORITY_HIGH requires API 21
+        // BluetoothDevice.TRANSPORT_LE requires API 23
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
+    sourceSets {
+        main {
+            java.srcDirs = ["src/main/java"]
+        }
+    }
+}
+
+repositories {
+    google()
+    mavenCentral()
+}
+
+dependencies {
+    // React Native — provided by the host app; do not bundle
+    implementation "com.facebook.react:react-android"
+
+    // Kotlin stdlib
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+}
