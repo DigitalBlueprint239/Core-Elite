@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { getOutboxItems, removeFromOutbox, updateOutboxItem, OutboxItem } from '../lib/offline';
+import { getOutboxItems, removeFromOutbox, updateOutboxItem, getDeadLetterItems, resetDeadLetterItem, OutboxItem } from '../lib/offline';
 import { supabase } from '../lib/supabase';
 
 const MAX_RETRIES = 5;
@@ -7,11 +7,13 @@ const MAX_RETRIES = 5;
 export function useOfflineSync() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [pendingCount, setPendingCount] = useState(0);
+  const [requiresForceSync, setRequiresForceSync] = useState(0);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
 
   const updatePendingCount = useCallback(async () => {
     const items = await getOutboxItems();
     setPendingCount(items.filter(i => i.status !== 'dead_letter').length);
+    setRequiresForceSync(items.filter(i => i.status === 'dead_letter').length);
   }, []);
 
   const syncOutbox = useCallback(async () => {
@@ -19,7 +21,7 @@ export function useOfflineSync() {
 
     const items = await getOutboxItems();
     const syncableItems = items.filter(i => i.status === 'pending' || i.status === 'retrying');
-    
+
     if (syncableItems.length === 0) return;
 
     console.log(`Syncing ${syncableItems.length} items...`);
@@ -71,24 +73,26 @@ export function useOfflineSync() {
         if (success) {
           await removeFromOutbox(item.id);
         } else {
-          // Handle failure with retry logic
+          // Handle failure with retry logic — dead_letter halts background retry entirely
+          const newRetryCount = item.retry_count + 1;
           const updatedItem: OutboxItem = {
             ...item,
-            retry_count: item.retry_count + 1,
+            retry_count: newRetryCount,
             last_attempt_at: Date.now(),
             error_message: errorMsg,
-            status: item.retry_count + 1 >= MAX_RETRIES ? 'dead_letter' : 'retrying'
+            status: newRetryCount >= MAX_RETRIES ? 'dead_letter' : 'retrying'
           };
           await updateOutboxItem(updatedItem);
         }
       } catch (err: any) {
         console.error('Failed to sync item', item.id, err);
+        const newRetryCount = item.retry_count + 1;
         const updatedItem: OutboxItem = {
           ...item,
-          retry_count: item.retry_count + 1,
+          retry_count: newRetryCount,
           last_attempt_at: Date.now(),
           error_message: err.message,
-          status: item.retry_count + 1 >= MAX_RETRIES ? 'dead_letter' : 'retrying'
+          status: newRetryCount >= MAX_RETRIES ? 'dead_letter' : 'retrying'
         };
         await updateOutboxItem(updatedItem);
       }
@@ -97,6 +101,18 @@ export function useOfflineSync() {
     await updatePendingCount();
     setLastSyncTime(new Date());
   }, [updatePendingCount]);
+
+  // Force-retry one dead-letter item (or all if no id given)
+  const forceSync = useCallback(async (id?: string) => {
+    if (id) {
+      await resetDeadLetterItem(id);
+    } else {
+      const deadItems = await getDeadLetterItems();
+      await Promise.all(deadItems.map(item => resetDeadLetterItem(item.id)));
+    }
+    await updatePendingCount();
+    if (navigator.onLine) syncOutbox();
+  }, [updatePendingCount, syncOutbox]);
 
   useEffect(() => {
     const handleOnline = () => {
@@ -122,5 +138,5 @@ export function useOfflineSync() {
     };
   }, [syncOutbox, updatePendingCount]);
 
-  return { isOnline, pendingCount, lastSyncTime, syncOutbox, updatePendingCount };
+  return { isOnline, pendingCount, requiresForceSync, lastSyncTime, syncOutbox, forceSync, updatePendingCount };
 }
