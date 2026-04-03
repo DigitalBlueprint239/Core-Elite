@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { QrCode, User, Send, RefreshCw, ChevronLeft, AlertCircle, CheckCircle2, Wifi, WifiOff, History, AlertTriangle, Zap, ListOrdered, X, ShieldAlert, ArrowLeft, LayoutGrid } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { getDeviceId } from '../lib/device';
+import { tick } from '../lib/hlc';
 import { DRILL_CATALOG } from '../constants';
 
 export default function StationMode() {
@@ -67,13 +68,17 @@ export default function StationMode() {
       if (navigator.onLine) {
         await supabase.from('device_status').upsert(payload);
       } else {
-        // Queue heartbeat for later if offline
+        // Queue heartbeat for later if offline.
+        // Generate HLC once and pass explicitly so addToOutbox does not
+        // burn a second tick() call internally.
+        const hlcTimestamp = tick();
         await addToOutbox({
           id: `heartbeat-${Date.now()}`,
           type: 'device_status',
           payload,
           timestamp: Date.now(),
-          attempts: 0
+          attempts: 0,
+          hlc_timestamp: hlcTimestamp,
         });
       }
     }
@@ -182,6 +187,10 @@ export default function StationMode() {
     }
 
     const clientResultId = uuidv4();
+    // Generate HLC once for this mutation. Passed to both meta (for server-side
+    // LWW resolution) and the outbox item (for client-side ordering).
+    // Do NOT call tick() again after this point for the same submission.
+    const hlcTimestamp = tick();
     const payload = {
       client_result_id: clientResultId,
       event_id: station.event_id,
@@ -194,9 +203,12 @@ export default function StationMode() {
         attempts: newAttempts,
         outlier: isOutlierConfirmed,
         outlier_reason: outlierReason || null,
-        device_id: getDeviceId()
+        device_id: getDeviceId(),
+        // HLC stored in meta JSONB — no schema migration required for MVP.
+        // Phase 2 follow-up: add dedicated hlc_timestamp TEXT column to results table.
+        hlc_timestamp: hlcTimestamp,
       },
-      recorded_at: new Date().toISOString()
+      recorded_at: new Date().toISOString(), // Wall clock kept for display / Postgres TIMESTAMPTZ
     };
 
     try {
@@ -205,7 +217,8 @@ export default function StationMode() {
         type: 'result',
         payload,
         timestamp: Date.now(),
-        attempts: 0
+        attempts: 0,
+        hlc_timestamp: hlcTimestamp,
       });
 
       await updatePendingCount();
@@ -235,6 +248,7 @@ export default function StationMode() {
     const item = queue[index];
     if (!item.result) return;
 
+    const laneHlcTimestamp = tick();
     const payload = {
       client_result_id: uuidv4(),
       event_id: station.event_id,
@@ -243,8 +257,8 @@ export default function StationMode() {
       station_id: station.id,
       drill_type: station.drill_type,
       value_num: parseFloat(item.result),
-      meta: { device_id: getDeviceId() },
-      recorded_at: new Date().toISOString()
+      meta: { device_id: getDeviceId(), hlc_timestamp: laneHlcTimestamp },
+      recorded_at: new Date().toISOString(),
     };
 
     await addToOutbox({
@@ -252,7 +266,8 @@ export default function StationMode() {
       type: 'result',
       payload,
       timestamp: Date.now(),
-      attempts: 0
+      attempts: 0,
+      hlc_timestamp: laneHlcTimestamp,
     });
 
     await updatePendingCount();
