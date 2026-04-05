@@ -2,7 +2,7 @@ import { openDB, IDBPDatabase } from 'idb';
 import { tick } from './hlc';
 
 const DB_NAME = 'core_elite_combine_db';
-const DB_VERSION = 2; // v2: adds hlc_timestamp index to outbox store
+const DB_VERSION = 3; // v3: adds by_status index to outbox (idx_outbox_pending, v2 §3.3.3)
 
 export interface OutboxItem {
   id: string; // client_result_id
@@ -46,6 +46,14 @@ export async function initDB() {
         const outboxStore = transaction.objectStore('outbox');
         outboxStore.createIndex('by_hlc', 'hlc_timestamp', { unique: false });
       }
+      // Version 3: add status index for efficient pending/retrying queries
+      // (idx_outbox_pending equivalent, v2 §3.3.3).
+      // Allows syncOutbox to use db.getAllFromIndex('outbox', 'by_status', ...)
+      // instead of a full-store scan filtered in JS.
+      if (oldVersion < 3) {
+        const outboxStore = transaction.objectStore('outbox');
+        outboxStore.createIndex('by_status', 'status', { unique: false });
+      }
     },
   });
 }
@@ -69,6 +77,20 @@ export async function addToOutbox(item: Partial<OutboxItem> & Pick<OutboxItem, '
 export async function getOutboxItems(): Promise<OutboxItem[]> {
   const db = await initDB();
   return db.getAll('outbox');
+}
+
+/**
+ * Return only syncable (pending + retrying) outbox items using the by_status
+ * index added in DB version 3 (idx_outbox_pending, v2 §3.3.3).
+ * Avoids the full-store scan + in-JS filter that syncOutbox was doing.
+ */
+export async function getSyncableOutboxItems(): Promise<OutboxItem[]> {
+  const db = await initDB();
+  const [pending, retrying] = await Promise.all([
+    db.getAllFromIndex('outbox', 'by_status', 'pending'),
+    db.getAllFromIndex('outbox', 'by_status', 'retrying'),
+  ]);
+  return [...pending, ...retrying];
 }
 
 export async function updateOutboxItem(item: OutboxItem) {
@@ -98,8 +120,8 @@ export async function clearAthleteCache() {
 
 export async function getDeadLetterItems(): Promise<OutboxItem[]> {
   const db = await initDB();
-  const all = await db.getAll('outbox');
-  return all.filter(i => i.status === 'dead_letter');
+  // Use the by_status index — no full-store scan needed
+  return db.getAllFromIndex('outbox', 'by_status', 'dead_letter');
 }
 
 export async function resetDeadLetterItem(id: string) {

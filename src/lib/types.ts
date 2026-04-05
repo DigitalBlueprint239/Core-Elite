@@ -63,6 +63,9 @@ export interface Result {
   // Monotonically increasing per (athlete_id, event_id, drill_type).
   // Best result computed at query time — never merged or deduplicated.
   attempt_number: number;
+  // Phase 2: tracks 4-gate validation outcome (idx_results_pending_validation, v2 §3.3.3).
+  // 'extraordinary' rows are pending admin review after scout confirmation.
+  validation_status: 'clean' | 'extraordinary' | 'reviewed';
   meta?: any;
 }
 

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { getOutboxItems, removeFromOutbox, updateOutboxItem, getDeadLetterItems, resetDeadLetterItem, OutboxItem } from '../lib/offline';
+import { getOutboxItems, getSyncableOutboxItems, removeFromOutbox, updateOutboxItem, getDeadLetterItems, resetDeadLetterItem, OutboxItem } from '../lib/offline';
 import { supabase } from '../lib/supabase';
 import { update as updateHlc } from '../lib/hlc';
 // lww.ts (addBiasedShouldKeep, deviceStatusShouldUpdate) wired in Phase 4
@@ -23,8 +23,8 @@ export function useOfflineSync() {
   const syncOutbox = useCallback(async () => {
     if (!navigator.onLine) return;
 
-    const items = await getOutboxItems();
-    const syncableItems = items.filter(i => i.status === 'pending' || i.status === 'retrying');
+    // Use by_status index (v3) — avoids full-store scan (idx_outbox_pending, v2 §3.3.3)
+    const syncableItems = await getSyncableOutboxItems();
 
     if (syncableItems.length === 0) return;
 
