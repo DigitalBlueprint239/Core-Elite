@@ -160,8 +160,12 @@ export default function StationMode() {
 
     const drillConfig = DRILL_CATALOG.find(d => d.id === station.drill_type);
     const val = parseFloat(resultValue);
+    // Phase 2: attempt_number is 1-based, monotonically increasing per athlete
+    // per drill per session. The array holds values of prior committed reps.
+    const attemptNumber = attempts.length + 1;
+    const attemptsAllowed = drillConfig?.attempts_allowed || 1;
 
-    // Outlier check
+    // Outlier check — applies to every rep, not just the final one
     if (drillConfig?.recommended_range && !isOutlierConfirmed) {
       if (val < drillConfig.recommended_range.min || val > drillConfig.recommended_range.max) {
         setShowOutlierModal(true);
@@ -171,108 +175,91 @@ export default function StationMode() {
 
     setSubmitting(true);
 
-    const newAttempts = [...attempts, val];
-    const attemptsAllowed = drillConfig?.attempts_allowed || 1;
-    
-    // If more attempts allowed, just save to local state and reset input
-    if (newAttempts.length < attemptsAllowed) {
-      setAttempts(newAttempts);
-      setResultValue('');
-      setSubmitting(false);
-      return;
-    }
-
-    // Final submission
-    let finalValue = val;
-    if (drillConfig?.use_best_attempt) {
-      // Lower is better for sec, higher for others
-      if (drillConfig.unit === 'sec') {
-        finalValue = Math.min(...newAttempts);
-      } else {
-        finalValue = Math.max(...newAttempts);
-      }
-    }
-
-    // Gate 4 — extraordinary_result intercept (Phase 4 fail-soft)
-    // validateResult runs the full 4-gate pipeline; we only intercept Gate 4 here.
-    // Gates 1–3 are hard physical-impossibility failures and should not be silently
-    // confirmed by a scout — treat them as validation errors upstream.
-    const gateCheck = validateResult(station.drill_type, finalValue);
+    // Gate 4 — extraordinary_result intercept (Phase 4 fail-soft).
+    // Applies per rep. Gates 1–3 are hard physical-impossibility failures
+    // and are not intercepted here — they propagate as validation errors.
+    const gateCheck = validateResult(station.drill_type, val);
     if (!gateCheck.valid && gateCheck.gate === 'extraordinary_result') {
       const clientResultId = uuidv4();
       const payload = {
         client_result_id: clientResultId,
-        event_id: station.event_id,
-        athlete_id: athlete.athlete_id,
-        band_id: athlete.band_id,
-        station_id: station.id,
-        drill_type: station.drill_type,
-        value_num: finalValue,
+        event_id:         station.event_id,
+        athlete_id:       athlete.athlete_id,
+        band_id:          athlete.band_id,
+        station_id:       station.id,
+        drill_type:       station.drill_type,
+        value_num:        val,
+        attempt_number:   attemptNumber,
         meta: {
-          attempts: newAttempts,
-          outlier: true,
-          outlier_reason: 'scout_review_confirmed',
-          extraordinary_result: true,
-          gate4_reason: gateCheck.reason,
-          device_id: getDeviceId()
+          outlier:               true,
+          outlier_reason:        'scout_review_confirmed',
+          extraordinary_result:  true,
+          gate4_reason:          gateCheck.reason,
+          device_id:             getDeviceId(),
         },
-        recorded_at: new Date().toISOString()
+        recorded_at: new Date().toISOString(),
       };
-      setScoutReviewPending({ flaggedValue: finalValue, reason: gateCheck.reason, payload, clientResultId });
+      setScoutReviewPending({ flaggedValue: val, reason: gateCheck.reason, payload, clientResultId });
       setSubmitting(false);
       return;
     }
 
     const clientResultId = uuidv4();
-    // Generate HLC once for this mutation. Passed to both meta (for server-side
-    // LWW resolution) and the outbox item (for client-side ordering).
-    // Do NOT call tick() again after this point for the same submission.
+    // Generate HLC once per rep. Never call tick() twice for the same submission.
     const hlcTimestamp = tick();
     const payload = {
       client_result_id: clientResultId,
-      event_id: station.event_id,
-      athlete_id: athlete.athlete_id,
-      band_id: athlete.band_id,
-      station_id: station.id,
-      drill_type: station.drill_type,
-      value_num: finalValue,
+      event_id:         station.event_id,
+      athlete_id:       athlete.athlete_id,
+      band_id:          athlete.band_id,
+      station_id:       station.id,
+      drill_type:       station.drill_type,
+      value_num:        val,
+      // Phase 2: each rep is its own immutable row (v1 §3.6.4).
+      // Best-of-N is computed at query time — never on the client.
+      attempt_number:   attemptNumber,
       meta: {
-        outlier: isOutlierConfirmed,
+        outlier:        isOutlierConfirmed,
         outlier_reason: outlierReason || null,
-        device_id: getDeviceId(),
-        // hlc_timestamp in meta is the legacy path; migration 007 promotes it
-        // to a first-class column server-side via submit_result_secure.
-        hlc_timestamp: hlcTimestamp,
+        device_id:      getDeviceId(),
+        hlc_timestamp:  hlcTimestamp,
       },
-      recorded_at: new Date().toISOString(), // Wall clock kept for display / Postgres TIMESTAMPTZ
+      recorded_at: new Date().toISOString(),
     };
 
     try {
       await addToOutbox({
-        id: clientResultId,
-        type: 'result',
+        id:            clientResultId,
+        type:          'result',
         payload,
-        timestamp: Date.now(),
-        attempts: 0,
+        timestamp:     Date.now(),
+        attempts:      0,
         hlc_timestamp: hlcTimestamp,
       });
 
       await updatePendingCount();
-      
-      setLastSubmitted({
-        athleteName: athlete.name,
-        athleteNumber: athlete.display_number,
-        value: finalValue,
-        attempts: newAttempts
-      });
 
-      // Reset for next athlete
-      setAthlete(null);
-      setResultValue('');
-      setAttempts([]);
-      setOutlierReason('');
-      setShowOutlierModal(false);
-      setScanning(true);
+      const newAttempts = [...attempts, val];
+
+      if (newAttempts.length >= attemptsAllowed) {
+        // All allowed reps committed — show confirmation and reset for next athlete
+        setLastSubmitted({
+          athleteName:   athlete.name,
+          athleteNumber: athlete.display_number,
+          value:         val,
+          attempts:      newAttempts,
+        });
+        setAthlete(null);
+        setResultValue('');
+        setAttempts([]);
+        setOutlierReason('');
+        setShowOutlierModal(false);
+        setScanning(true);
+      } else {
+        // More reps allowed — persist this rep to state and stay on same athlete
+        setAttempts(newAttempts);
+        setResultValue('');
+      }
     } catch (err) {
       setError('Failed to save result locally.');
     } finally {
@@ -283,28 +270,50 @@ export default function StationMode() {
   const handleScoutConfirm = async () => {
     if (!scoutReviewPending || !athlete) return;
     setSubmitting(true);
+    // Generate HLC for this scout-confirmed rep (was missing before Phase 2)
+    const hlcTimestamp = tick();
     try {
       await addToOutbox({
-        id: scoutReviewPending.clientResultId,
+        id:   scoutReviewPending.clientResultId,
         type: 'result',
-        payload: scoutReviewPending.payload,
-        timestamp: Date.now(),
-        attempts: 0
+        payload: {
+          ...scoutReviewPending.payload,
+          meta: {
+            ...scoutReviewPending.payload.meta,
+            hlc_timestamp: hlcTimestamp,
+          },
+        },
+        timestamp:     Date.now(),
+        attempts:      0,
+        hlc_timestamp: hlcTimestamp,
       });
+
       await updatePendingCount();
-      setLastSubmitted({
-        athleteName: athlete.name,
-        athleteNumber: athlete.display_number,
-        value: scoutReviewPending.flaggedValue,
-        attempts: []
-      });
-      setScoutReviewPending(null);
-      setAthlete(null);
-      setResultValue('');
-      setAttempts([]);
-      setOutlierReason('');
-      setShowOutlierModal(false);
-      setScanning(true);
+
+      const drillConfig = DRILL_CATALOG.find(d => d.id === station.drill_type);
+      const attemptsAllowed = drillConfig?.attempts_allowed || 1;
+      const newAttempts = [...attempts, scoutReviewPending.flaggedValue];
+
+      if (newAttempts.length >= attemptsAllowed) {
+        setLastSubmitted({
+          athleteName:   athlete.name,
+          athleteNumber: athlete.display_number,
+          value:         scoutReviewPending.flaggedValue,
+          attempts:      newAttempts,
+        });
+        setScoutReviewPending(null);
+        setAthlete(null);
+        setResultValue('');
+        setAttempts([]);
+        setOutlierReason('');
+        setShowOutlierModal(false);
+        setScanning(true);
+      } else {
+        // More reps allowed — stay on same athlete
+        setAttempts(newAttempts);
+        setScoutReviewPending(null);
+        setResultValue('');
+      }
     } catch (err) {
       setError('Failed to save result locally.');
     } finally {
@@ -325,12 +334,14 @@ export default function StationMode() {
     const laneHlcTimestamp = tick();
     const payload = {
       client_result_id: uuidv4(),
-      event_id: station.event_id,
-      athlete_id: item.athlete_id,
-      band_id: item.band_id,
-      station_id: station.id,
-      drill_type: station.drill_type,
-      value_num: parseFloat(item.result),
+      event_id:         station.event_id,
+      athlete_id:       item.athlete_id,
+      band_id:          item.band_id,
+      station_id:       station.id,
+      drill_type:       station.drill_type,
+      value_num:        parseFloat(item.result),
+      // Lane mode is single-rep — always attempt 1
+      attempt_number:   1,
       meta: { device_id: getDeviceId(), hlc_timestamp: laneHlcTimestamp },
       recorded_at: new Date().toISOString(),
     };

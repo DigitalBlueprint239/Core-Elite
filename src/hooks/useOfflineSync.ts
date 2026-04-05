@@ -53,13 +53,15 @@ export function useOfflineSync() {
 
           const { data, error } = await supabase.rpc('submit_result_secure', {
             p_client_result_id: item.id,
-            p_event_id: item.payload.event_id,
-            p_athlete_id: item.payload.athlete_id,
-            p_band_id: item.payload.band_id,
-            p_station_id: item.payload.station_id,
-            p_drill_type: item.payload.drill_type,
-            p_value_num: item.payload.value_num,
-            p_meta: metaWithHlc,
+            p_event_id:         item.payload.event_id,
+            p_athlete_id:       item.payload.athlete_id,
+            p_band_id:          item.payload.band_id,
+            p_station_id:       item.payload.station_id,
+            p_drill_type:       item.payload.drill_type,
+            p_value_num:        item.payload.value_num,
+            // Phase 2: each rep is its own immutable row (v1 §3.6.4).
+            p_attempt_number:   item.payload.attempt_number ?? 1,
+            p_meta:             metaWithHlc,
           });
 
           if (!error && data?.success) {

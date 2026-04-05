@@ -59,6 +59,10 @@ export interface Result {
   // Phase 2: hlc_timestamp is now a first-class column (v2 §3.1.3, v3 §3.1.2).
   // Format: "{pt:016d}_{l:010d}_{nodeId}" — lexicographically sortable B-Tree index.
   hlc_timestamp?: string;
+  // Phase 2: each rep is a separate immutable record (v1 §3.6.4).
+  // Monotonically increasing per (athlete_id, event_id, drill_type).
+  // Best result computed at query time — never merged or deduplicated.
+  attempt_number: number;
   meta?: any;
 }
 
