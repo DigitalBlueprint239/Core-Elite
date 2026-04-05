@@ -49,12 +49,16 @@ export interface Athlete {
 
 export interface Result {
   id: string;
+  client_result_id: string;
   athlete_id: string;
   band_id: string;
   station_id: string;
   drill_type: string;
   value_num: number;
   recorded_at: string;
+  // Phase 2: hlc_timestamp is now a first-class column (v2 §3.1.3, v3 §3.1.2).
+  // Format: "{pt:016d}_{l:010d}_{nodeId}" — lexicographically sortable B-Tree index.
+  hlc_timestamp?: string;
   meta?: any;
 }
 

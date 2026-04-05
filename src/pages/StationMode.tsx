@@ -237,12 +237,11 @@ export default function StationMode() {
       drill_type: station.drill_type,
       value_num: finalValue,
       meta: {
-        attempts: newAttempts,
         outlier: isOutlierConfirmed,
         outlier_reason: outlierReason || null,
         device_id: getDeviceId(),
-        // HLC stored in meta JSONB — no schema migration required for MVP.
-        // Phase 2 follow-up: add dedicated hlc_timestamp TEXT column to results table.
+        // hlc_timestamp in meta is the legacy path; migration 007 promotes it
+        // to a first-class column server-side via submit_result_secure.
         hlc_timestamp: hlcTimestamp,
       },
       recorded_at: new Date().toISOString(), // Wall clock kept for display / Postgres TIMESTAMPTZ
