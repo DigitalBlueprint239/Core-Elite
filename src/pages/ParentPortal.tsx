@@ -2,18 +2,19 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { motion } from 'motion/react';
-import { 
-  Trophy, 
-  Activity, 
-  CheckCircle2, 
-  Clock, 
-  Download, 
+import {
+  Trophy,
+  Activity,
+  CheckCircle2,
+  Clock,
+  Download,
   ChevronRight,
   User,
   MapPin,
   Calendar,
   ArrowLeft
 } from 'lucide-react';
+import { SkeletonHeader, SkeletonResultCard } from '../components/Skeleton';
 
 export default function ParentPortal() {
   const { token } = useParams();
@@ -64,8 +65,25 @@ export default function ParentPortal() {
   }, [token]);
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-zinc-50">
-      <div className="animate-pulse text-zinc-400 font-bold uppercase tracking-widest">Loading Portal...</div>
+    <div className="min-h-screen bg-zinc-50 pb-12">
+      <div className="bg-zinc-900 pt-12 pb-24 px-6">
+        <div className="max-w-2xl mx-auto space-y-4 animate-pulse">
+          <div className="h-16 w-16 bg-white/10 rounded-2xl" />
+          <div className="h-6 bg-white/10 rounded w-2/5" />
+          <div className="h-4 bg-white/10 rounded w-1/3" />
+        </div>
+      </div>
+      <div className="max-w-2xl mx-auto px-6 -mt-12 space-y-6">
+        <div className="bg-white p-6 rounded-3xl border border-zinc-200 shadow-xl animate-pulse">
+          <div className="h-12 bg-zinc-100 rounded-2xl w-full" />
+        </div>
+        <SkeletonHeader />
+        <div className="space-y-3">
+          <SkeletonResultCard />
+          <SkeletonResultCard />
+          <SkeletonResultCard />
+        </div>
+      </div>
     </div>
   );
 

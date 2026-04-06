@@ -19,6 +19,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { DRILL_CATALOG } from '../constants';
+import { SkeletonCard, SkeletonTable } from '../components/Skeleton';
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState({
@@ -176,10 +177,21 @@ export default function AdminDashboard() {
       <main className="max-w-7xl mx-auto px-8 py-8 space-y-8">
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <StatCard icon={<Users />} label="Athletes Registered" value={stats.athletes} color="blue" />
-          <StatCard icon={<CreditCard />} label="Bands Assigned" value={stats.bands} color="purple" />
-          <StatCard icon={<Activity />} label="Results Captured" value={stats.results} color="emerald" />
-          <StatCard icon={<CheckCircle />} label="Completed Drills" value={stats.completed} color="amber" />
+          {loading ? (
+            <>
+              <SkeletonCard />
+              <SkeletonCard />
+              <SkeletonCard />
+              <SkeletonCard />
+            </>
+          ) : (
+            <>
+              <StatCard icon={<Users />} label="Athletes Registered" value={stats.athletes} color="blue" />
+              <StatCard icon={<CreditCard />} label="Bands Assigned" value={stats.bands} color="purple" />
+              <StatCard icon={<Activity />} label="Results Captured" value={stats.results} color="emerald" />
+              <StatCard icon={<CheckCircle />} label="Completed Drills" value={stats.completed} color="amber" />
+            </>
+          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -199,6 +211,9 @@ export default function AdminDashboard() {
               </div>
             </div>
 
+            {loading ? (
+              <SkeletonTable />
+            ) : (
             <div className="bg-white rounded-3xl border border-zinc-200 shadow-sm overflow-hidden">
               <table className="w-full text-left border-collapse">
                 <thead>
@@ -250,6 +265,7 @@ export default function AdminDashboard() {
                 </tbody>
               </table>
             </div>
+            )}
 
             {/* Pagination Controls */}
             {totalPages > 1 && (

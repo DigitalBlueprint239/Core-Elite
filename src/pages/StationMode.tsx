@@ -382,7 +382,16 @@ export default function StationMode() {
     }
   };
 
-  if (loading && !station) return <div className="p-8 text-center">Loading station...</div>;
+  if (loading && !station) return (
+    <div className="min-h-screen bg-zinc-50 p-8 space-y-6 animate-pulse">
+      <div className="h-8 bg-zinc-200 rounded w-1/3" />
+      <div className="h-4 bg-zinc-100 rounded w-1/4" />
+      <div className="bg-white rounded-3xl border border-zinc-200 p-8 space-y-4">
+        <div className="h-6 bg-zinc-200 rounded w-1/2" />
+        <div className="h-32 bg-zinc-100 rounded-2xl" />
+      </div>
+    </div>
+  );
 
   return (
     <div className="max-w-md mx-auto px-4 py-6 pb-24">
