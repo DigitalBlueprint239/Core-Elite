@@ -383,14 +383,22 @@ export default function Register() {
                   className="w-full p-3 bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none"
                 >
                   <option value="">Select Position</option>
-                  <option value="QB">Quarterback</option>
-                  <option value="RB">Running Back</option>
-                  <option value="WR">Wide Receiver</option>
-                  <option value="TE">Tight End</option>
-                  <option value="OL">Offensive Line</option>
-                  <option value="DL">Defensive Line</option>
-                  <option value="LB">Linebacker</option>
-                  <option value="DB">Defensive Back</option>
+                  <option value="ATH">ATH (Athlete)</option>
+                  <option value="CB">CB (Cornerback)</option>
+                  <option value="DB">DB (Defensive Back)</option>
+                  <option value="DL">DL (Defensive Line)</option>
+                  <option value="EDGE">EDGE (Edge Rusher)</option>
+                  <option value="FB">FB (Fullback)</option>
+                  <option value="K">K (Kicker)</option>
+                  <option value="LB">LB (Linebacker)</option>
+                  <option value="LS">LS (Long Snapper)</option>
+                  <option value="OL">OL (Offensive Line)</option>
+                  <option value="P">P (Punter)</option>
+                  <option value="QB">QB (Quarterback)</option>
+                  <option value="RB">RB (Running Back)</option>
+                  <option value="S">S (Safety)</option>
+                  <option value="TE">TE (Tight End)</option>
+                  <option value="WR">WR (Wide Receiver)</option>
                 </select>
               </div>
             </div>
