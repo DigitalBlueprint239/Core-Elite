@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { QRScanner } from '../components/QRScanner';
 import { motion } from 'motion/react';
-import { QrCode, CheckCircle2, AlertCircle, User, ArrowLeft } from 'lucide-react';
+import { QrCode, CheckCircle2, AlertCircle, User, ArrowLeft, Share2, Copy, ExternalLink } from 'lucide-react';
 
 export default function ClaimBand() {
   const [searchParams] = useSearchParams();
@@ -17,6 +17,8 @@ export default function ClaimBand() {
   const [assignedBand, setAssignedBand] = useState<any>(null);
   const [manualEntry, setManualEntry] = useState(false);
   const [bandNumber, setBandNumber] = useState('');
+  const [portalToken, setPortalToken] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!token) {
@@ -63,6 +65,7 @@ export default function ClaimBand() {
       if (!data?.success) throw new Error(data?.error || 'Failed to claim wristband.');
 
       setAssignedBand({ display_number: data.display_number });
+      if (data.portal_token) setPortalToken(data.portal_token);
       setSuccess(true);
     } catch (err: any) {
       setError(err.message);
@@ -227,25 +230,77 @@ export default function ClaimBand() {
           </div>
         </div>
       ) : (
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-white p-8 rounded-3xl border border-zinc-200 shadow-xl text-center space-y-6"
+          className="space-y-4"
         >
-          <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
-            <CheckCircle2 className="w-10 h-10" />
-          </div>
-          <div>
-            <h2 className="text-2xl font-bold mb-1">Wristband Assigned!</h2>
-            <p className="text-zinc-500">Athlete #{assignedBand.display_number} is ready for testing.</p>
-          </div>
-          
-          <div className="p-6 bg-zinc-50 rounded-2xl border border-zinc-100">
-            <div className="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-1">Athlete Number</div>
-            <div className="text-6xl font-black text-zinc-900">{assignedBand.display_number}</div>
+          <div className="bg-white p-8 rounded-3xl border border-zinc-200 shadow-xl text-center space-y-4">
+            <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
+              <CheckCircle2 className="w-10 h-10" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold mb-1">Wristband Assigned!</h2>
+              <p className="text-zinc-500">You're officially in. Time to perform.</p>
+            </div>
+
+            <div className="p-6 bg-zinc-900 rounded-2xl">
+              <div className="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-1">Your Athlete Number</div>
+              <div className="text-7xl font-black text-white">#{assignedBand.display_number}</div>
+            </div>
+
+            <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 text-left text-sm text-zinc-600 space-y-1">
+              <p className="font-bold text-zinc-900 text-xs uppercase tracking-wider mb-2">Event Day Instructions</p>
+              <p>Your number is <strong>#{assignedBand.display_number}</strong>. Present your wristband at each testing station.</p>
+              <p>Results will appear in your Parent Portal within minutes of each drill.</p>
+            </div>
+
+            {portalToken && (
+              <Link
+                to={`/p/${portalToken}`}
+                className="block w-full py-3 border border-zinc-200 text-zinc-700 rounded-2xl font-bold text-sm hover:bg-zinc-50 transition-all text-center"
+              >
+                View Parent Portal →
+              </Link>
+            )}
           </div>
 
-          <button 
+          {/* Social Sharing */}
+          <div className="bg-white p-6 rounded-3xl border border-zinc-200 shadow-sm space-y-3">
+            <div className="flex items-center gap-2 text-sm font-bold">
+              <Share2 className="w-4 h-4 text-zinc-400" />
+              Share Your Results
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  const text = encodeURIComponent(`Just checked in at the Core Elite Combine 2026! 💪🏈 #CoreElite #CombineReady`);
+                  window.open(`https://twitter.com/intent/tweet?text=${text}`, '_blank');
+                }}
+                className="flex-1 flex items-center justify-center gap-2 py-3 bg-zinc-900 text-white rounded-xl text-sm font-bold hover:bg-zinc-800 transition-colors"
+              >
+                <ExternalLink className="w-4 h-4" />
+                Share to X
+              </button>
+              {portalToken && (
+                <button
+                  onClick={() => {
+                    const url = `${window.location.origin}/p/${portalToken}`;
+                    navigator.clipboard.writeText(url).then(() => {
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    });
+                  }}
+                  className="flex-1 flex items-center justify-center gap-2 py-3 border border-zinc-200 text-zinc-700 rounded-xl text-sm font-bold hover:bg-zinc-50 transition-colors"
+                >
+                  <Copy className="w-4 h-4" />
+                  {copied ? 'Copied!' : 'Copy Portal Link'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          <button
             onClick={() => navigate('/')}
             className="w-full py-4 bg-zinc-900 text-white rounded-2xl font-bold hover:bg-zinc-800 transition-all"
           >
