@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase';
 import { motion } from 'motion/react';
 import { useOrganization } from '../hooks/useOrganization';
 import { BRAND } from '../lib/brand';
+import { calculatePercentile, gradeFromPercentile, gradeColor } from '../lib/analytics';
+import { DRILL_CATALOG } from '../constants';
 import {
   Trophy,
   Activity,
@@ -208,17 +210,34 @@ export default function ParentPortal() {
                 No results recorded yet.
               </div>
             ) : (
-              data.results.map((res: any) => (
-                <div key={res.id} className="bg-white p-4 rounded-2xl border border-zinc-200 shadow-sm flex items-center justify-between">
-                  <div>
-                    <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">{res.drill_type}</div>
-                    <div className="text-lg font-black">{res.value_num} <span className="text-xs font-normal text-zinc-400">sec</span></div>
+              data.results.map((res: any) => {
+                const drill = DRILL_CATALOG.find(d => d.id === res.drill_type);
+                const pct = calculatePercentile(res.value_num, res.drill_type);
+                const grade = pct !== null ? gradeFromPercentile(pct) : null;
+                return (
+                  <div key={res.id} className="bg-white p-4 rounded-2xl border border-zinc-200 shadow-sm flex items-center justify-between">
+                    <div>
+                      <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+                        {drill?.label ?? res.drill_type}
+                      </div>
+                      <div className="text-lg font-black">
+                        {res.value_num}
+                        <span className="text-xs font-normal text-zinc-400 ml-1">{drill?.unit ?? ''}</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      {pct !== null && grade && (
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wide ${gradeColor(grade)}`}>
+                          {pct}th — {grade}
+                        </span>
+                      )}
+                      <div className="text-[10px] font-bold text-zinc-400 uppercase">
+                        {new Date(res.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-[10px] font-bold text-zinc-400 uppercase">{new Date(res.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </section>

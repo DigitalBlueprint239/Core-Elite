@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { DRILL_CATALOG } from '../constants';
 import { SkeletonCard, SkeletonTable } from '../components/Skeleton';
+import { calculatePercentile } from '../lib/analytics';
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState({
@@ -34,6 +35,7 @@ export default function AdminDashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [exporting, setExporting] = useState(false);
   const [page, setPage] = useState(0);
+  const [scoreSortDir, setScoreSortDir] = useState<'desc' | 'asc'>('desc');
   const PAGE_SIZE = 20;
 
   const handleExport = async () => {
@@ -78,7 +80,7 @@ export default function AdminDashboard() {
       // 3. Fetch Athlete Progress
       const { data: athleteData } = await supabase
         .from('athletes')
-        .select('*, bands(display_number), results(drill_type)')
+        .select('*, bands(display_number), results(drill_type, value_num)')
         .order('created_at', { ascending: false });
 
       setStats({
@@ -103,12 +105,27 @@ export default function AdminDashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  const filteredAthletes = athletes.filter(a => 
+  function avgPercentile(athlete: any): number | null {
+    const results: any[] = athlete.results || [];
+    const percentiles = results
+      .map((r: any) => calculatePercentile(r.value_num, r.drill_type))
+      .filter((p): p is number => p !== null);
+    if (percentiles.length === 0) return null;
+    return Math.round(percentiles.reduce((a, b) => a + b, 0) / percentiles.length);
+  }
+
+  const filteredAthletes = athletes.filter(a =>
     `${a.first_name} ${a.last_name}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
     a.bands?.display_number?.toString().includes(searchTerm)
   );
 
-  const paginatedAthletes = filteredAthletes.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const sortedAthletes = [...filteredAthletes].sort((a, b) => {
+    const pa = avgPercentile(a) ?? -1;
+    const pb = avgPercentile(b) ?? -1;
+    return scoreSortDir === 'desc' ? pb - pa : pa - pb;
+  });
+
+  const paginatedAthletes = sortedAthletes.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   const totalPages = Math.ceil(filteredAthletes.length / PAGE_SIZE);
 
   const exportCSV = () => {
@@ -222,6 +239,12 @@ export default function AdminDashboard() {
                     <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Athlete</th>
                     <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Position</th>
                     <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Progress</th>
+                    <th
+                      className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500 cursor-pointer select-none hover:text-zinc-900 transition-colors"
+                      onClick={() => setScoreSortDir(d => d === 'desc' ? 'asc' : 'desc')}
+                    >
+                      Score {scoreSortDir === 'desc' ? '↓' : '↑'}
+                    </th>
                     <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Status</th>
                   </tr>
                 </thead>
@@ -248,6 +271,16 @@ export default function AdminDashboard() {
                           </div>
                           <span className="text-xs font-bold">{athlete.results?.length || 0}/5</span>
                         </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        {(() => {
+                          const score = avgPercentile(athlete);
+                          return score !== null ? (
+                            <span className="text-sm font-black text-zinc-900">{score}<span className="text-xs font-normal text-zinc-400">th</span></span>
+                          ) : (
+                            <span className="text-xs text-zinc-300 font-medium">—</span>
+                          );
+                        })()}
                       </td>
                       <td className="px-6 py-4">
                         {athlete.results?.length >= 5 ? (
