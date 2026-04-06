@@ -4,7 +4,10 @@ import { z } from 'zod';
 export const athleteRegistrationSchema = z.object({
   firstName: z.string().min(1, 'First name is required').max(50),
   lastName: z.string().min(1, 'Last name is required').max(50),
-  date_of_birth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format'),
+  date_of_birth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format').refine((val) => {
+    const age = new Date().getFullYear() - new Date(val).getFullYear();
+    return age >= 10 && age <= 19;
+  }, 'Athlete must be between 10 and 19 years old'),
   grade: z.string().min(1, 'Grade is required'),
   position: z.string().min(1, 'Position is required'),
   parentName: z.string().min(1, 'Parent name is required').max(100),

@@ -438,13 +438,20 @@ export default function Register() {
               </div>
             </div>
 
-            <button 
+            <button
               onClick={() => {
                 if (!formData.firstName || !formData.lastName || !formData.date_of_birth || !formData.parentEmail) {
                   if (!formData.date_of_birth) {
                     setDateOfBirthError('Date of birth is required.');
                   }
                   setError({ message: 'Missing Required Fields', details: 'Please complete all required fields including Date of Birth.' });
+                  return;
+                }
+                const dob = new Date(formData.date_of_birth);
+                const today = new Date();
+                const age = today.getFullYear() - dob.getFullYear();
+                if (age < 10 || age > 19) {
+                  setDateOfBirthError('Athletes must be between 10 and 19 years old to participate.');
                   return;
                 }
                 setError(null);
