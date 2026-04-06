@@ -11,7 +11,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getDeviceId } from '../lib/device';
 import { tick } from '../lib/hlc';
 import { DRILL_CATALOG } from '../constants';
-import { validateResult } from '../lib/scoring';
+import { validateResult, DrillId } from '../lib/scoring';
 
 export default function StationMode() {
   const { stationId } = useParams();
@@ -178,8 +178,8 @@ export default function StationMode() {
     // Gate 4 — extraordinary_result intercept (Phase 4 fail-soft).
     // Applies per rep. Gates 1–3 are hard physical-impossibility failures
     // and are not intercepted here — they propagate as validation errors.
-    const gateCheck = validateResult(station.drill_type, val);
-    if (!gateCheck.valid && gateCheck.gate === 'extraordinary_result') {
+    const gateCheck = validateResult(station.drill_type as DrillId, val);
+    if (gateCheck.valid === false && gateCheck.gate === 'extraordinary_result') {
       const clientResultId = uuidv4();
       const payload = {
         client_result_id: clientResultId,

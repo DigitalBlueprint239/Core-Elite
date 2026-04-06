@@ -167,7 +167,7 @@ export function computeBES(
 
     const validation = validateResult(input.drillId, input.value, input.reactionMs);
 
-    if (!validation.valid) {
+    if (validation.valid === false) {
       invalidDrills.push({
         drillId: input.drillId,
         reason:  validation.reason,
