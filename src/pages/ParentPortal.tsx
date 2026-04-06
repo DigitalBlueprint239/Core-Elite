@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { motion } from 'motion/react';
+import { useOrganization } from '../hooks/useOrganization';
+import { BRAND } from '../lib/brand';
 import {
   Trophy,
   Activity,
@@ -25,6 +27,7 @@ export default function ParentPortal() {
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const { org } = useOrganization(data?.event?.id);
 
   useEffect(() => {
     async function fetchPortalData() {
@@ -121,6 +124,13 @@ export default function ParentPortal() {
       <header className="bg-zinc-900 text-white pt-12 pb-24 px-6 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2" />
         <div className="max-w-2xl mx-auto relative">
+          <div className="mb-4">
+            {org.logo_url ? (
+              <img src={org.logo_url} alt={org.name} className="h-8" />
+            ) : (
+              <img src={BRAND.logo} alt="Core Elite" className="w-8 h-8 opacity-80" />
+            )}
+          </div>
           <div className="flex items-center gap-4 mb-6">
             <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center text-3xl font-black italic">
               {data.athlete.band_id?.slice(-3) || '--'}

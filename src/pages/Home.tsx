@@ -4,10 +4,12 @@ import { Users, ClipboardCheck, BarChart3 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { supabase } from '../lib/supabase';
 import { BRAND } from '../lib/brand';
+import { useOrganization } from '../hooks/useOrganization';
 
 export default function Home() {
   const [activeEventSlug, setActiveEventSlug] = useState<string | null>(null);
   const [eventInfo, setEventInfo] = useState<{ name: string; location: string; date: string } | null>(null);
+  const { org } = useOrganization();
 
   useEffect(() => {
     async function fetchActiveEvent() {
@@ -58,7 +60,11 @@ export default function Home() {
             transition={{ duration: 0.4 }}
             className="inline-block mb-6"
           >
-            <img src={BRAND.logo} alt="Core Elite" className="w-16 h-16 mx-auto" />
+            {org.logo_url ? (
+              <img src={org.logo_url} alt={org.name} className="h-16 mx-auto" />
+            ) : (
+              <img src={BRAND.logo} alt="Core Elite" className="w-16 h-16 mx-auto" />
+            )}
           </motion.div>
           <motion.h1
             initial={{ opacity: 0, y: 16 }}

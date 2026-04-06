@@ -8,6 +8,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { SyncIndicator } from './components/SyncIndicator';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { RouteGuard } from './components/RouteGuard';
+import { ThemeProvider } from './components/ThemeProvider';
 
 // Lazy load routes
 const Home = lazy(() => import('./pages/Home'));
@@ -26,6 +27,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <BrowserRouter>
+        <ThemeProvider>
         <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900">
           <Suspense fallback={
             <div className="flex items-center justify-center min-h-screen">
@@ -69,6 +71,7 @@ export default function App() {
           </Suspense>
           <SyncIndicator />
         </div>
+        </ThemeProvider>
       </BrowserRouter>
     </ErrorBoundary>
   );

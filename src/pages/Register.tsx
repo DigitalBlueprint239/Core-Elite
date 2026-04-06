@@ -7,11 +7,14 @@ import { SignatureCanvas } from '../components/SignatureCanvas';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronRight, CheckCircle2, AlertCircle, ArrowLeft, ChevronDown } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
+import { useOrganization } from '../hooks/useOrganization';
+import { BRAND } from '../lib/brand';
 
 export default function Register() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
+  const { org } = useOrganization();
   const [event, setEvent] = useState<any>(null);
   const [availableEvents, setAvailableEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -329,11 +332,18 @@ export default function Register() {
         </div>
       </div>
 
-      <div className="mb-8">
-        <h1 className="text-3xl font-black uppercase italic italic tracking-tighter">
-          Athlete Registration
-        </h1>
-        <p className="text-zinc-500">{event?.name} • {event?.location}</p>
+      <div className="mb-8 flex items-center gap-4">
+        {org.logo_url ? (
+          <img src={org.logo_url} alt={org.name} className="h-10 shrink-0" />
+        ) : (
+          <img src={BRAND.logo} alt="Core Elite" className="w-10 h-10 shrink-0" />
+        )}
+        <div>
+          <h1 className="text-3xl font-black uppercase italic tracking-tighter">
+            Athlete Registration
+          </h1>
+          <p className="text-zinc-500">{event?.name} • {event?.location}</p>
+        </div>
       </div>
 
       <AnimatePresence mode="wait">

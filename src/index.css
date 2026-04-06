@@ -5,11 +5,22 @@
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
 }
 
+/* White-label brand tokens — overridden at runtime by ThemeProvider */
+:root {
+  --brand-primary: #18181b;   /* zinc-900 default */
+  --brand-accent:  #c8a200;   /* gold default */
+}
+
 @layer base {
   body {
     @apply bg-zinc-50 text-zinc-900 antialiased;
   }
 }
+
+/* Brand utility classes that consume CSS variables */
+.bg-brand-primary  { background-color: var(--brand-primary); }
+.text-brand-accent { color: var(--brand-accent); }
+.border-brand-accent { border-color: var(--brand-accent); }
 
 .signature-pad {
   cursor: crosshair;
