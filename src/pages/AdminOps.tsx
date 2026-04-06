@@ -27,9 +27,10 @@ import { BandsTab } from './admin-ops/BandsTab';
 import { ResultsTab } from './admin-ops/ResultsTab';
 import { WaiversTab } from './admin-ops/WaiversTab';
 import { IncidentsTab } from './admin-ops/IncidentsTab';
+import { AuditTab } from './admin-ops/AuditTab';
 
 export default function AdminOps() {
-  const [activeTab, setActiveTab] = useState<'events' | 'stations' | 'drills' | 'bands' | 'results' | 'waivers' | 'incidents'>('events');
+  const [activeTab, setActiveTab] = useState<'events' | 'stations' | 'drills' | 'bands' | 'results' | 'waivers' | 'incidents' | 'audit'>('events');
   const [activeEvent, setActiveEvent] = useState<any>(null);
   const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -169,11 +170,17 @@ export default function AdminOps() {
             icon={<FileText />} 
             label="Waivers" 
           />
-          <NavButton 
-            active={activeTab === 'incidents'} 
-            onClick={() => setActiveTab('incidents')} 
-            icon={<ShieldAlert />} 
-            label="Incidents" 
+          <NavButton
+            active={activeTab === 'incidents'}
+            onClick={() => setActiveTab('incidents')}
+            icon={<ShieldAlert />}
+            label="Incidents"
+          />
+          <NavButton
+            active={activeTab === 'audit'}
+            onClick={() => setActiveTab('audit')}
+            icon={<ClipboardList />}
+            label="Audit Log"
           />
 
           <div className="pt-8 space-y-4">
@@ -212,6 +219,9 @@ export default function AdminOps() {
             )}
             {activeTab === 'incidents' && (
               <IncidentsTab eventId={activeEvent?.id} />
+            )}
+            {activeTab === 'audit' && (
+              <AuditTab eventId={activeEvent?.id} />
             )}
           </AnimatePresence>
         </main>
