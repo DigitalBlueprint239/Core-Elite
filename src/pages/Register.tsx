@@ -163,7 +163,7 @@ export default function Register() {
 
   const handleSubmit = async () => {
     if (!signature) return;
-    
+
     // Validate with Zod
     try {
       athleteRegistrationSchema.parse(formData);
@@ -181,25 +181,30 @@ export default function Register() {
 
     setLoading(true);
 
+    // Sanitize all free-text fields before submission.
+    // strip() removes leading/trailing whitespace; <> removal prevents
+    // HTML injection into stored PII fields.
+    const sanitize = (str: string) => str.trim().replace(/[<>]/g, '');
+
     try {
       const { data, error: rpcError } = await supabase.rpc('register_athlete_secure', {
-        p_event_id: event.id,
-        p_first_name: formData.firstName,
-        p_last_name: formData.lastName,
-        p_date_of_birth: formData.date_of_birth,
-        p_grade: formData.grade,
-        p_position: formData.position,
-        p_parent_name: formData.parentName,
-        p_parent_email: formData.parentEmail,
-        p_parent_phone: formData.parentPhone,
-        p_guardian_relationship: formData.guardianRelationship,
-        p_emergency_contact_name: formData.emergencyContactName,
-        p_emergency_contact_phone: formData.emergencyContactPhone,
-        p_signature_data_url: signature,
-        p_injury_waiver_ack: formData.injuryWaiverAck,
-        p_media_release: formData.mediaRelease,
-        p_data_consent: formData.dataConsent,
-        p_marketing_consent: formData.marketingConsent
+        p_event_id:                   event.id,
+        p_first_name:                 sanitize(formData.firstName),
+        p_last_name:                  sanitize(formData.lastName),
+        p_date_of_birth:              formData.date_of_birth,
+        p_grade:                      formData.grade,
+        p_position:                   formData.position,
+        p_parent_name:                sanitize(formData.parentName),
+        p_parent_email:               formData.parentEmail.toLowerCase().trim(),
+        p_parent_phone:               formData.parentPhone.trim(),
+        p_guardian_relationship:      formData.guardianRelationship.trim(),
+        p_emergency_contact_name:     sanitize(formData.emergencyContactName),
+        p_emergency_contact_phone:    formData.emergencyContactPhone.trim(),
+        p_signature_data_url:         signature,
+        p_injury_waiver_ack:          formData.injuryWaiverAck,
+        p_media_release:              formData.mediaRelease,
+        p_data_consent:               formData.dataConsent,
+        p_marketing_consent:          formData.marketingConsent,
       });
 
       if (rpcError) throw rpcError;

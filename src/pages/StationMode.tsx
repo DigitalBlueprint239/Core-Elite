@@ -160,6 +160,14 @@ export default function StationMode() {
 
     const drillConfig = DRILL_CATALOG.find(d => d.id === station.drill_type);
     const val = parseFloat(resultValue);
+
+    // Strict numeric guard — reject NaN, zero, and negative values before
+    // any gate checks or DB writes. Protects against non-numeric input and
+    // malformed data reaching the scoring pipeline.
+    if (isNaN(val) || val <= 0) {
+      setError('Please enter a valid positive number.');
+      return;
+    }
     // Phase 2: attempt_number is 1-based, monotonically increasing per athlete
     // per drill per session. The array holds values of prior committed reps.
     const attemptNumber = attempts.length + 1;
@@ -331,6 +339,12 @@ export default function StationMode() {
     const item = queue[index];
     if (!item.result) return;
 
+    const laneVal = parseFloat(item.result);
+    if (isNaN(laneVal) || laneVal <= 0) {
+      setError('Please enter a valid positive number.');
+      return;
+    }
+
     const laneHlcTimestamp = tick();
     const payload = {
       client_result_id: uuidv4(),
@@ -339,7 +353,7 @@ export default function StationMode() {
       band_id:          item.band_id,
       station_id:       station.id,
       drill_type:       station.drill_type,
-      value_num:        parseFloat(item.result),
+      value_num:        laneVal,
       // Lane mode is single-rep — always attempt 1
       attempt_number:   1,
       meta: { device_id: getDeviceId(), hlc_timestamp: laneHlcTimestamp },
