@@ -22,6 +22,7 @@ const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 const AdminOps = lazy(() => import('./pages/AdminOps'));
 const AdminDiagnostics = lazy(() => import('./pages/AdminDiagnostics'));
 const ParentPortal = lazy(() => import('./pages/ParentPortal'));
+const CoachPortal = lazy(() => import('./pages/CoachPortal'));
 
 export default function App() {
   return (
@@ -64,6 +65,11 @@ export default function App() {
               <Route path="/admin/diagnostics" element={
                 <RouteGuard requireAdmin>
                   <AdminDiagnostics />
+                </RouteGuard>
+              } />
+              <Route path="/coach/:eventId" element={
+                <RouteGuard>
+                  <CoachPortal />
                 </RouteGuard>
               } />
               <Route path="*" element={<Navigate to="/" replace />} />

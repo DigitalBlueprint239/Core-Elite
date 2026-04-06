@@ -2,13 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { motion } from 'motion/react';
-import { 
-  Users, 
-  CreditCard, 
-  Activity, 
-  CheckCircle, 
-  Wifi, 
-  WifiOff, 
+import {
+  Users,
+  CreditCard,
+  Activity,
+  CheckCircle,
+  Wifi,
+  WifiOff,
   Search,
   Download,
   MoreVertical,
@@ -16,7 +16,8 @@ import {
   Clock,
   Home,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Trophy,
 } from 'lucide-react';
 import { DRILL_CATALOG } from '../constants';
 import { SkeletonCard, SkeletonTable } from '../components/Skeleton';
@@ -178,7 +179,8 @@ export default function AdminDashboard() {
             <h1 className="text-xl font-black uppercase italic tracking-tighter">Admin Dashboard</h1>
           </div>
           <div className="flex items-center gap-4">
-            <button 
+            <CoachPortalLink />
+            <button
               onClick={handleExport}
               disabled={exporting}
               className="flex items-center gap-2 px-4 py-2 bg-zinc-100 hover:bg-zinc-200 rounded-xl text-sm font-bold transition-colors disabled:opacity-50"
@@ -422,6 +424,38 @@ export default function AdminDashboard() {
         </div>
       </main>
     </div>
+  );
+}
+
+/**
+ * Resolves the current live event and renders a Coach Portal deep-link.
+ * Shows nothing while loading or when no live event exists.
+ */
+function CoachPortalLink() {
+  const [eventId, setEventId] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    supabase
+      .from('events')
+      .select('id')
+      .eq('status', 'live')
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) setEventId(data.id);
+      });
+  }, []);
+
+  if (!eventId) return null;
+
+  return (
+    <Link
+      to={`/coach/${eventId}`}
+      className="flex items-center gap-2 px-4 py-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl text-sm font-bold text-amber-800 transition-colors"
+    >
+      <Trophy className="w-4 h-4" />
+      Coach Portal
+    </Link>
   );
 }
 
