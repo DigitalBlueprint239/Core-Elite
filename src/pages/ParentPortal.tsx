@@ -12,7 +12,10 @@ import {
   User,
   MapPin,
   Calendar,
-  ArrowLeft
+  ArrowLeft,
+  Share2,
+  Copy,
+  ExternalLink
 } from 'lucide-react';
 import { SkeletonHeader, SkeletonResultCard } from '../components/Skeleton';
 
@@ -21,6 +24,7 @@ export default function ParentPortal() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     async function fetchPortalData() {
@@ -209,7 +213,39 @@ export default function ParentPortal() {
           </div>
         </section>
 
-        <footer className="pt-8 text-center">
+        {/* Social Sharing */}
+        <section className="bg-white p-6 rounded-3xl border border-zinc-200 shadow-sm space-y-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Share2 className="w-4 h-4 text-zinc-400" />
+            <h3 className="font-bold text-sm">Share Your Results</h3>
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={() => {
+                const text = encodeURIComponent(`Just completed the ${data.event.name}! 💪🏈 #CoreElite #CombineReady`);
+                window.open(`https://twitter.com/intent/tweet?text=${text}`, '_blank');
+              }}
+              className="flex-1 flex items-center justify-center gap-2 py-3 bg-zinc-900 text-white rounded-xl text-sm font-bold hover:bg-zinc-800 transition-colors"
+            >
+              <ExternalLink className="w-4 h-4" />
+              Share to X
+            </button>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(window.location.href).then(() => {
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                });
+              }}
+              className="flex-1 flex items-center justify-center gap-2 py-3 border border-zinc-200 text-zinc-700 rounded-xl text-sm font-bold hover:bg-zinc-50 transition-colors"
+            >
+              <Copy className="w-4 h-4" />
+              {copied ? 'Copied!' : 'Copy Link'}
+            </button>
+          </div>
+        </section>
+
+        <footer className="pt-4 text-center">
           <div className="inline-flex items-center gap-2 px-4 py-2 bg-zinc-100 rounded-full text-[10px] font-bold uppercase tracking-widest text-zinc-500">
             <Trophy className="w-3 h-3" /> Core Elite Combine 2026
           </div>
