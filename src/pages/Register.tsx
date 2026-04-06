@@ -5,7 +5,7 @@ import { athleteRegistrationSchema } from '../lib/types';
 import { z } from 'zod';
 import { SignatureCanvas } from '../components/SignatureCanvas';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChevronRight, CheckCircle2, AlertCircle, ArrowLeft } from 'lucide-react';
+import { ChevronRight, CheckCircle2, AlertCircle, ArrowLeft, ChevronDown } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
 export default function Register() {
@@ -39,6 +39,7 @@ export default function Register() {
   const [dateOfBirthError, setDateOfBirthError] = useState<string | null>(null);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [isAdmin, setIsAdmin] = useState(false);
+  const [waiverExpanded, setWaiverExpanded] = useState(false);
 
   useEffect(() => {
     async function checkAdmin() {
@@ -474,11 +475,48 @@ export default function Register() {
             exit={{ opacity: 0, x: -20 }}
             className="space-y-6"
           >
-            <div className="bg-white p-6 rounded-2xl border border-zinc-200 space-y-4 max-h-96 overflow-y-auto text-sm text-zinc-600 leading-relaxed">
-              <h2 className="text-lg font-bold text-zinc-900">Release of Liability & Consent</h2>
-              <p>I, the undersigned parent/guardian, hereby give permission for the athlete named above to participate in the Core Elite Combine 2026. I understand that athletic testing involves inherent risks of injury.</p>
-              <p>I release Core Elite and its staff from any and all liability for injuries sustained during the event. I also consent to the use of any photos or videos taken during the event for promotional purposes.</p>
-              <p>In case of emergency, I authorize the staff to seek medical attention for the athlete if I cannot be reached immediately.</p>
+            <div className="bg-white p-6 rounded-2xl border border-zinc-200 space-y-4 text-sm text-zinc-600 leading-relaxed">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-bold text-zinc-900">Release of Liability & Consent</h2>
+                <button
+                  type="button"
+                  onClick={() => setWaiverExpanded(!waiverExpanded)}
+                  className="flex items-center gap-1 text-xs font-bold text-zinc-500 hover:text-zinc-900 transition-colors"
+                >
+                  {waiverExpanded ? 'Collapse' : 'Read Full Waiver'}
+                  <ChevronDown className={`w-3 h-3 transition-transform ${waiverExpanded ? 'rotate-180' : ''}`} />
+                </button>
+              </div>
+
+              {!waiverExpanded ? (
+                <p className="text-zinc-500 italic text-xs">
+                  By signing below, you authorize athletic participation, release Core Elite from liability for injuries, consent to emergency medical care, and agree to media and data collection terms. Tap "Read Full Waiver" to review all five sections.
+                </p>
+              ) : (
+                <div className="max-h-72 overflow-y-auto space-y-4 pr-1">
+                  <div>
+                    <h3 className="font-bold text-zinc-900 mb-1">Section 1: Assumption of Risk</h3>
+                    <p>I, the undersigned parent/guardian, acknowledge that participation in athletic combine testing involves inherent risks, including but not limited to physical injury, muscle strain, sprains, fractures, and in rare cases, serious injury or death. I understand these risks are an ordinary part of athletic performance testing and I voluntarily accept them.</p>
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-zinc-900 mb-1">Section 2: Release of Liability</h3>
+                    <p>I hereby release, discharge, and hold harmless Core Elite, its organizers, staff, volunteers, venue owners, and sponsors from any and all claims, demands, losses, or liabilities arising from the athlete's participation in this event, whether caused by negligence or otherwise, to the fullest extent permitted by law.</p>
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-zinc-900 mb-1">Section 3: Medical Authorization</h3>
+                    <p>In the event of injury or medical emergency, I authorize Core Elite staff to seek and consent to emergency medical treatment for the athlete if I cannot be reached immediately. I understand that Core Elite will make every effort to contact me before authorizing treatment.</p>
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-zinc-900 mb-1">Section 4: Media Release</h3>
+                    <p>I consent to the capture and use of photographs, video recordings, and related media of the athlete during the event for Core Elite's promotional, educational, and marketing purposes, including use on social media, websites, and printed materials.</p>
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-zinc-900 mb-1">Section 5: Data Collection Consent</h3>
+                    <p>I consent to the collection, processing, and storage of the athlete's performance data, including drill results, timing data, and biometric measurements, for the purposes of athlete evaluation, reporting, and sharing with authorized college scouts and recruiting platforms.</p>
+                  </div>
+                </div>
+              )}
+
               <div className="pt-4 border-t border-zinc-100 space-y-4">
                 <div className="space-y-4">
                   <label className="flex items-start gap-3 cursor-pointer group">
