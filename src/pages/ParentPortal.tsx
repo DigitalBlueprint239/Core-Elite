@@ -163,7 +163,16 @@ export default function ParentPortal() {
             </div>
           </div>
           {data.report?.status === 'ready' ? (
-            <button className="p-3 bg-zinc-900 text-white rounded-xl shadow-lg">
+            <button
+              onClick={() => {
+                if (data.report?.report_url) {
+                  window.open(data.report.report_url, '_blank');
+                } else {
+                  alert('Report URL not available yet. Please try again shortly.');
+                }
+              }}
+              className="p-3 bg-zinc-900 text-white rounded-xl shadow-lg hover:bg-zinc-800 transition-colors"
+            >
               <Download className="w-5 h-5" />
             </button>
           ) : (
