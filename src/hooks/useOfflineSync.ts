@@ -2,6 +2,23 @@ import { useEffect, useState, useCallback } from 'react';
 import { getOutboxItems, getSyncableOutboxItems, removeFromOutbox, updateOutboxItem, getDeadLetterItems, resetDeadLetterItem, OutboxItem } from '../lib/offline';
 import { supabase } from '../lib/supabase';
 import { update as updateHlc } from '../lib/hlc';
+
+// ---------------------------------------------------------------------------
+// DuplicateChallenge — surfaced to StationMode when submit_result_secure
+// returns SUSPICIOUS_DUPLICATE. The outbox item is held in 'pending_review'
+// until the operator resolves it via resolveDuplicateChallenge().
+// ---------------------------------------------------------------------------
+export interface DuplicateChallenge {
+  itemId:               string;   // outbox item id (= client_result_id)
+  existingResultId:     string;
+  existingValue:        number;
+  existingRecordedAt:   string;
+  existingAttemptNum:   number;
+  newValue:             number;
+  athleteId:            string;
+  drillType:            string;
+  payload:              any;      // original outbox payload for re-submission
+}
 // lww.ts (addBiasedShouldKeep, deviceStatusShouldUpdate) wired in Phase 4
 // when the pull path is added. The add-biased principle is applied below
 // through logic rather than a direct function call.
@@ -13,6 +30,7 @@ export function useOfflineSync() {
   const [pendingCount, setPendingCount] = useState(0);
   const [requiresForceSync, setRequiresForceSync] = useState(0);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+  const [duplicateChallenges, setDuplicateChallenges] = useState<DuplicateChallenge[]>([]);
 
   const updatePendingCount = useCallback(async () => {
     const items = await getOutboxItems();
@@ -64,6 +82,31 @@ export function useOfflineSync() {
             p_meta:             metaWithHlc,
           });
 
+          // ── Suspicious duplicate: park for operator review ────────────────
+          if (!error && data?.code === 'SUSPICIOUS_DUPLICATE') {
+            await updateOutboxItem({
+              ...item,
+              status: 'pending_review',
+              last_attempt_at: Date.now(),
+            });
+            setDuplicateChallenges(prev => {
+              if (prev.some(c => c.itemId === item.id)) return prev;
+              return [...prev, {
+                itemId:             item.id,
+                existingResultId:   data.existing_result_id,
+                existingValue:      data.existing_value,
+                existingRecordedAt: data.existing_recorded_at,
+                existingAttemptNum: data.existing_attempt_num ?? 1,
+                newValue:           data.new_value,
+                athleteId:          data.athlete_id,
+                drillType:          data.drill_type,
+                payload:            item.payload,
+              }];
+            });
+            // Item is now parked — skip success/failure handling for this iteration
+            continue;
+          }
+
           if (!error && data?.success) {
             // Advance local HLC to stay ahead of any clock we've successfully synced.
             // This ensures future writes on this device are always ordered after
@@ -94,6 +137,16 @@ export function useOfflineSync() {
           const { error } = await supabase.from('device_status').upsert(item.payload);
           if (!error) {
             if (item.hlc_timestamp) updateHlc(item.hlc_timestamp);
+            success = true;
+          } else {
+            errorMsg = error.message;
+          }
+        } else if (item.type === 'audit_log') {
+          // audit_log is an append-only table — insert only, never upsert.
+          // Treat duplicate key as success (add-biased): if the server already has
+          // this audit entry (e.g. synced on a previous attempt), we're done.
+          const { error } = await supabase.from('audit_log').insert(item.payload);
+          if (!error || error.message?.includes('duplicate') || error.code === '23505') {
             success = true;
           } else {
             errorMsg = error.message;
@@ -132,6 +185,76 @@ export function useOfflineSync() {
     setLastSyncTime(new Date());
   }, [updatePendingCount]);
 
+  // ---------------------------------------------------------------------------
+  // resolveDuplicateChallenge — called from the StationMode modal when the
+  // operator makes a decision on a SUSPICIOUS_DUPLICATE outbox item.
+  //
+  //   keep_both — re-queue with attempt_number incremented. Gate 2 in
+  //               submit_result_secure skips when attempt_number > 1, so the
+  //               second result goes straight to the write phase.
+  //
+  //   replace   — void the existing DB result (triggers audit log), then
+  //               re-queue with attempt_number = 1 at lower priority.
+  //               Gate 2 is safe because the voided record is now excluded
+  //               from the suspicious-duplicate query (migration 015).
+  //
+  //   discard   — remove the new result from the outbox entirely. The
+  //               existing DB record stands.
+  // ---------------------------------------------------------------------------
+  const resolveDuplicateChallenge = useCallback(async (
+    itemId: string,
+    resolution: 'keep_both' | 'replace' | 'discard',
+  ) => {
+    const challenge = duplicateChallenges.find(c => c.itemId === itemId);
+    if (!challenge) return;
+
+    if (resolution === 'discard') {
+      await removeFromOutbox(itemId);
+
+    } else if (resolution === 'keep_both') {
+      const allItems = await getOutboxItems();
+      const item = allItems.find(i => i.id === itemId);
+      if (item) {
+        await updateOutboxItem({
+          ...item,
+          status:          'pending',
+          retry_count:     0,
+          last_attempt_at: undefined,
+          error_message:   undefined,
+          payload: {
+            ...item.payload,
+            // attempt_number > 1 bypasses Gate 2 in submit_result_secure
+            attempt_number: (challenge.existingAttemptNum ?? 1) + 1,
+          },
+        });
+      }
+
+    } else if (resolution === 'replace') {
+      // Void the conflicting DB record — the audit trigger fires automatically
+      await supabase
+        .from('results')
+        .update({ voided: true })
+        .eq('id', challenge.existingResultId);
+
+      const allItems = await getOutboxItems();
+      const item = allItems.find(i => i.id === itemId);
+      if (item) {
+        // attempt_number stays at 1 — the voided record won't retrigger Gate 2
+        await updateOutboxItem({
+          ...item,
+          status:          'pending',
+          retry_count:     0,
+          last_attempt_at: undefined,
+          error_message:   undefined,
+        });
+      }
+    }
+
+    setDuplicateChallenges(prev => prev.filter(c => c.itemId !== itemId));
+    await updatePendingCount();
+    if (navigator.onLine) syncOutbox();
+  }, [duplicateChallenges, updatePendingCount, syncOutbox]);
+
   // Force-retry one dead-letter item (or all if no id given)
   const forceSync = useCallback(async (id?: string) => {
     if (id) {
@@ -168,5 +291,15 @@ export function useOfflineSync() {
     };
   }, [syncOutbox, updatePendingCount]);
 
-  return { isOnline, pendingCount, requiresForceSync, lastSyncTime, syncOutbox, forceSync, updatePendingCount };
+  return {
+    isOnline,
+    pendingCount,
+    requiresForceSync,
+    lastSyncTime,
+    syncOutbox,
+    forceSync,
+    updatePendingCount,
+    duplicateChallenges,
+    resolveDuplicateChallenge,
+  };
 }

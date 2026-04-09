@@ -121,7 +121,7 @@ export default function ClaimBand() {
           
           <div className="space-y-3 pt-4">
             <button 
-              onClick={() => navigate('/register?event=coreelite2026')}
+              onClick={() => navigate('/register')}
               className="w-full py-4 bg-zinc-900 text-white rounded-2xl font-bold hover:bg-zinc-800 transition-all"
             >
               Return to Registration

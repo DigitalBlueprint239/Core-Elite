@@ -1,8 +1,45 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 @import "tailwindcss";
 
+/*
+ * Geist Sans — Variable font (weight 100–900)
+ * Source: node_modules/geist (Vercel, MIT licence)
+ * Vite resolves url() in CSS relative to this file (src/index.css).
+ * The path ../node_modules/... is intentional — do not change to a
+ * bare specifier; bare specifiers are not supported in CSS url().
+ *
+ * Inter is removed. Geist Sans is the exclusive UI typeface.
+ */
+@font-face {
+  font-family: 'Geist';
+  src: url('../node_modules/geist/dist/fonts/geist-sans/Geist-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/*
+ * Geist Mono — Variable font (weight 100–900)
+ * Used for all numeric performance values: 40-times, heights,
+ * weights, percentiles, deltas. Monospace spacing ensures columns
+ * stay vertically aligned in data-dense scout tables.
+ */
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  /* Geist Sans replaces Inter as the platform typeface.
+     Tailwind's font-sans utility maps to this variable. */
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+
+  /* Geist Mono is used on all numeric performance outputs.
+     Tailwind's font-mono utility maps to this variable.
+     Cascade: Geist Mono → system monospace → Courier New fallback. */
+  --font-mono: "Geist Mono", ui-monospace, "Cascadia Code", "Courier New", monospace;
 }
 
 /* White-label brand tokens — overridden at runtime by ThemeProvider */

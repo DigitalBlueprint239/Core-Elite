@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { athleteRegistrationSchema } from '../lib/types';
 import { z } from 'zod';
-import { SignatureCanvas } from '../components/SignatureCanvas';
+import { SignatureCanvas, SignatureMetadata } from '../components/SignatureCanvas';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronRight, CheckCircle2, AlertCircle, ArrowLeft, ChevronDown } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
@@ -38,8 +38,9 @@ export default function Register() {
     marketingConsent: false,
   });
 
-  const [signature, setSignature] = useState<string | null>(null);
+  const [signature, setSignature] = useState<SignatureMetadata | null>(null);
   const [dateOfBirthError, setDateOfBirthError] = useState<string | null>(null);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [isAdmin, setIsAdmin] = useState(false);
   const [waiverExpanded, setWaiverExpanded] = useState(false);
@@ -152,10 +153,31 @@ export default function Register() {
     resolveEvent();
   }, [searchParams]);
 
+  /**
+   * Real-time US phone formatter.
+   * Strips non-digits, caps at 10, and builds (XXX) XXX-XXXX progressively
+   * so the user sees the mask form as they type.
+   */
+  const formatPhone = (raw: string): string => {
+    const digits = raw.replace(/\D/g, '').slice(0, 10);
+    if (digits.length === 0) return '';
+    if (digits.length <= 3) return `(${digits}`;
+    if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target as HTMLInputElement;
     if (type === 'checkbox') {
       setFormData({ ...formData, [name]: (e.target as HTMLInputElement).checked });
+    } else if (name === 'parentPhone' || name === 'emergencyContactPhone') {
+      const formatted = formatPhone(value);
+      setFormData({ ...formData, [name]: formatted });
+      // Clear phone error once the user has typed all 10 digits
+      if (name === 'parentPhone') {
+        const digits = value.replace(/\D/g, '');
+        if (digits.length === 10) setPhoneError(null);
+      }
     } else {
       setFormData({ ...formData, [name]: value });
       if (name === 'date_of_birth' && value) {
@@ -203,7 +225,7 @@ export default function Register() {
         p_guardian_relationship:      formData.guardianRelationship.trim(),
         p_emergency_contact_name:     sanitize(formData.emergencyContactName),
         p_emergency_contact_phone:    formData.emergencyContactPhone.trim(),
-        p_signature_data_url:         signature,
+        p_signature_data_url:         signature?.dataUrl ?? null,
         p_injury_waiver_ack:          formData.injuryWaiverAck,
         p_media_release:              formData.mediaRelease,
         p_data_consent:               formData.dataConsent,
@@ -443,35 +465,85 @@ export default function Register() {
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Phone</label>
-                  <input 
+                  <input
                     type="tel"
-                    name="parentPhone" 
-                    value={formData.parentPhone} 
+                    name="parentPhone"
+                    value={formData.parentPhone}
                     onChange={handleInputChange}
-                    className="w-full p-3 bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none" 
+                    placeholder="(555) 555-5555"
+                    maxLength={14}
+                    className={`w-full p-3 bg-white border ${phoneError ? 'border-red-500 ring-1 ring-red-500' : 'border-zinc-200'} rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none`}
                   />
+                  {phoneError && (
+                    <p className="text-[10px] font-bold text-red-500 mt-1">{phoneError}</p>
+                  )}
                 </div>
               </div>
             </div>
 
             <button
               onClick={() => {
-                if (!formData.firstName || !formData.lastName || !formData.date_of_birth || !formData.parentEmail) {
-                  if (!formData.date_of_birth) {
-                    setDateOfBirthError('Date of birth is required.');
-                  }
-                  setError({ message: 'Missing Required Fields', details: 'Please complete all required fields including Date of Birth.' });
+                // ── Gate 1: required fields ──────────────────────────────────
+                const missingFields =
+                  !formData.firstName ||
+                  !formData.lastName  ||
+                  !formData.date_of_birth ||
+                  !formData.parentEmail;
+
+                if (missingFields) {
+                  if (!formData.date_of_birth) setDateOfBirthError('Date of birth is required.');
+                  setError({ message: 'Missing Required Fields', details: 'Please complete all required fields.' });
                   return;
                 }
-                const dob = new Date(formData.date_of_birth);
+
+                // ── Gate 2: DOB — parse with noon-UTC anchor to prevent
+                //    timezone-shifted date interpretation. e.g. "2010-01-01"
+                //    parsed as midnight local time on UTC-5 becomes 2009-12-31.
+                const dob = new Date(formData.date_of_birth + 'T12:00:00Z');
                 const today = new Date();
-                const age = today.getFullYear() - dob.getFullYear();
-                if (age < 10 || age > 19) {
-                  setDateOfBirthError('Athletes must be between 10 and 19 years old to participate.');
+                today.setHours(0, 0, 0, 0);
+
+                if (isNaN(dob.getTime())) {
+                  setDateOfBirthError('Please enter a valid date of birth.');
                   return;
                 }
-                setError(null);
+                if (dob >= today) {
+                  setDateOfBirthError('Date of birth must be in the past.');
+                  return;
+                }
+
+                // Precise age calculation: subtract 1 if the birthday has not
+                // yet occurred in the current calendar year.
+                let age = today.getFullYear() - dob.getFullYear();
+                const monthDiff = today.getMonth() - dob.getMonth();
+                if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
+                  age -= 1;
+                }
+
+                // Hard block: combine participants must be 10–19 years old.
+                // This mirrors the Zod schema in src/lib/types.ts and the SQL
+                // GATE 1 check in register_athlete_secure (migration 014).
+                // Must return here — do NOT fall through to setStep(2).
+                if (age < 10 || age > 19) {
+                  setDateOfBirthError(
+                    age < 10
+                      ? `Athlete must be at least 10 years old to participate (calculated age: ${age}).`
+                      : `Athlete must be 19 or younger to participate (calculated age: ${age}).`
+                  );
+                  return;
+                }
+
                 setDateOfBirthError(null);
+
+                // ── Gate 3: parent phone must have exactly 10 digits ─────────
+                const phoneDigits = formData.parentPhone.replace(/\D/g, '');
+                if (phoneDigits.length !== 10) {
+                  setPhoneError('Please enter a complete 10-digit phone number.');
+                  return;
+                }
+
+                setPhoneError(null);
+                setError(null);
                 setStep(2);
               }}
               className="w-full py-4 bg-zinc-900 text-white rounded-2xl font-bold text-lg shadow-lg hover:bg-zinc-800 transition-all flex items-center justify-center gap-2"
@@ -498,7 +570,7 @@ export default function Register() {
                   onClick={() => setWaiverExpanded(!waiverExpanded)}
                   className="flex items-center gap-1 text-xs font-bold text-zinc-500 hover:text-zinc-900 transition-colors"
                 >
-                  {waiverExpanded ? 'Collapse' : 'Read Full Waiver'}
+                  {waiverExpanded ? 'Collapse Waiver' : 'Read Full Waiver'}
                   <ChevronDown className={`w-3 h-3 transition-transform ${waiverExpanded ? 'rotate-180' : ''}`} />
                 </button>
               </div>
@@ -595,22 +667,31 @@ export default function Register() {
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Emergency Contact Phone</label>
-                  <input 
-                    name="emergencyContactPhone" 
-                    value={formData.emergencyContactPhone} 
+                  <input
+                    type="tel"
+                    name="emergencyContactPhone"
+                    value={formData.emergencyContactPhone}
                     onChange={handleInputChange}
-                    className="w-full p-3 bg-zinc-50 border border-zinc-200 rounded-xl outline-none" 
+                    placeholder="(555) 555-5555"
+                    maxLength={14}
+                    className="w-full p-3 bg-zinc-50 border border-zinc-200 rounded-xl outline-none"
                   />
                 </div>
               </div>
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Parent/Guardian Signature</label>
-              <SignatureCanvas onSave={(url) => {
-                setSignature(url);
-                setError(null);
-              }} onClear={() => setSignature(null)} />
+              <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                Parent / Guardian Signature <span className="text-red-500">*</span>
+              </label>
+              <SignatureCanvas
+                signerName={formData.parentName}
+                onSave={(meta) => {
+                  setSignature(meta);
+                  setError(null);
+                }}
+                onClear={() => setSignature(null)}
+              />
             </div>
 
             {error && (

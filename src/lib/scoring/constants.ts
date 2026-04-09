@@ -144,34 +144,34 @@ export interface GateThresholds {
 
 export const GATE_THRESHOLDS: Record<DrillId, GateThresholds> = {
   forty: {
-    // Framework values (v2 §2.2.4): floor=3.70s, world_record=4.21s, max=9.00s
-    physicalFloor:      3.70,  // Below this: physically impossible
-    maxThreshold:       9.00,  // Above this: sensor malfunction
-    extraordinaryFloor: 4.21,  // Below this (faster): below world-record pace → manual review
+    // Spec §4.1: block < 3.50s (sensor error), flag < 4.21s (extraordinary), block > 9.00s
+    physicalFloor:      3.50,  // Below this: sensor fire / mis-entry — BLOCK
+    maxThreshold:       9.00,  // Above this: sensor malfunction / DNF — BLOCK
+    extraordinaryFloor: 4.21,  // Below world-record pace — FLAG for review
   },
   ten_split: {
-    // 10-yard split biomechanical limits derived from 40yd model
-    physicalFloor:      1.40,  // Sub-1.40s is physically impossible at any level
-    maxThreshold:       3.00,  // Above 3.00s → sensor malfunction
-    extraordinaryFloor: 1.50,  // Below 1.50s → world-class territory, manual review
+    // 10-yard split derived from 40yd model
+    physicalFloor:      1.40,  // Sub-1.40s: physically impossible — BLOCK
+    maxThreshold:       3.00,  // Above 3.00s: sensor malfunction — BLOCK
+    extraordinaryFloor: 1.50,  // Sub-1.50s: world-class territory — FLAG
   },
   shuttle_5_10_5: {
-    // Pro agility 5-10-5 thresholds
-    physicalFloor:      3.60,  // Below NFL combine all-time records
-    maxThreshold:       8.00,  // Above 8.00s → sensor malfunction
-    extraordinaryFloor: 3.73,  // Below NFL all-time combine record → manual review
+    // Spec §4.2: block < 3.50s, flag < 3.73s, block > 8.00s
+    physicalFloor:      3.50,  // Below absolute floor — BLOCK
+    maxThreshold:       8.00,  // Above ceiling — BLOCK
+    extraordinaryFloor: 3.73,  // Below NFL all-time combine record — FLAG
   },
   vertical: {
-    // Vertical jump — direction is higher_is_better; roles of floor/extraordinary flip
-    physicalFloor:       5.0,  // Below 5in: implausible for any able-bodied athlete
-    maxThreshold:       72.0,  // Above 72in: sensor malfunction (no human has jumped 6ft)
-    extraordinaryFloor: 50.0,  // Above 50in: exceptional, manual verification recommended
+    // Spec §4.3: block < 5in, flag > 46in, block > 65in
+    physicalFloor:       5.0,  // Below 5in: implausible — BLOCK
+    maxThreshold:       65.0,  // Above 65in: sensor malfunction — BLOCK
+    extraordinaryFloor: 46.0,  // Above 46in: exceptional — FLAG for review
   },
   broad: {
-    // Broad jump — direction is higher_is_better
-    physicalFloor:       36.0, // Below 3ft: implausible for any football player
-    maxThreshold:       200.0, // Above ~16.7ft: sensor malfunction
-    extraordinaryFloor: 144.0, // Above 12ft: exceptional, manual verification
+    // Spec §4.4: block < 24in, flag > 130in, block > 160in
+    physicalFloor:      24.0,  // Below 2ft: implausible — BLOCK
+    maxThreshold:      160.0,  // Above ~13.3ft: sensor malfunction — BLOCK
+    extraordinaryFloor: 130.0, // Above ~10.8ft: exceptional — FLAG for review
   },
 };
 

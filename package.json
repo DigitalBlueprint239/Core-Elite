@@ -20,6 +20,7 @@
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
+    "geist": "^1.7.0",
     "html5-qrcode": "^2.3.8",
     "idb": "^8.0.3",
     "lucide-react": "^0.546.0",

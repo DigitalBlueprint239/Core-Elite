@@ -1,17 +1,155 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { motion } from 'motion/react';
-import { 
-  CreditCard, 
-  RefreshCw, 
-  Upload, 
-  Trash2, 
-  AlertTriangle, 
+import {
+  CreditCard,
+  RefreshCw,
+  Upload,
+  Trash2,
+  AlertTriangle,
   CheckCircle2,
   Search,
-  UserPlus
+  UserPlus,
+  X,
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
+
+// ─── Inline modal helpers (replaces native alert/confirm/prompt) ──────────────
+
+interface ConfirmModalProps {
+  title:     string;
+  message:   string;
+  danger?:   boolean;
+  onConfirm: () => void;
+  onCancel:  () => void;
+}
+
+function ConfirmModal({ title, message, danger, onConfirm, onCancel }: ConfirmModalProps) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden">
+        <div className={`px-6 py-4 border-b ${danger ? 'bg-red-50 border-red-100' : 'bg-zinc-50 border-zinc-100'} flex items-center justify-between`}>
+          <div className="flex items-center gap-3">
+            <AlertTriangle className={`w-5 h-5 shrink-0 ${danger ? 'text-red-500' : 'text-amber-500'}`} />
+            <h3 className="font-black text-sm uppercase tracking-wider">{title}</h3>
+          </div>
+          <button onClick={onCancel} className="p-1 rounded-lg hover:bg-zinc-100 text-zinc-400 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="px-6 py-5">
+          <p className="text-sm text-zinc-600 leading-relaxed">{message}</p>
+        </div>
+        <div className="px-6 pb-6 flex gap-2">
+          <button
+            onClick={onConfirm}
+            className={`flex-1 py-3 rounded-2xl font-bold text-sm transition-colors ${
+              danger
+                ? 'bg-red-600 hover:bg-red-500 text-white'
+                : 'bg-zinc-900 hover:bg-zinc-700 text-white'
+            }`}
+          >
+            Confirm
+          </button>
+          <button
+            onClick={onCancel}
+            className="flex-1 py-3 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-2xl font-bold text-sm transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface InputModalProps {
+  title:       string;
+  label:       string;
+  placeholder?: string;
+  onConfirm:   (value: string) => void;
+  onCancel:    () => void;
+}
+
+function InputModal({ title, label, placeholder, onConfirm, onCancel }: InputModalProps) {
+  const [value, setValue] = useState('');
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-zinc-100 bg-zinc-50 flex items-center justify-between">
+          <h3 className="font-black text-sm uppercase tracking-wider">{title}</h3>
+          <button onClick={onCancel} className="p-1 rounded-lg hover:bg-zinc-100 text-zinc-400 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="px-6 py-5 space-y-3">
+          <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">{label}</label>
+          <input
+            autoFocus
+            type="text"
+            value={value}
+            onChange={e => setValue(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && value.trim()) onConfirm(value.trim()); }}
+            placeholder={placeholder}
+            className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-2xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-zinc-900"
+          />
+        </div>
+        <div className="px-6 pb-6 flex gap-2">
+          <button
+            onClick={() => { if (value.trim()) onConfirm(value.trim()); }}
+            disabled={!value.trim()}
+            className="flex-1 py-3 bg-zinc-900 hover:bg-zinc-700 text-white rounded-2xl font-bold text-sm transition-colors disabled:opacity-40"
+          >
+            Confirm
+          </button>
+          <button
+            onClick={onCancel}
+            className="flex-1 py-3 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-2xl font-bold text-sm transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface AlertModalProps {
+  title:    string;
+  message:  string;
+  onClose:  () => void;
+}
+
+function AlertModal({ title, message, onClose }: AlertModalProps) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden">
+        <div className="px-6 py-4 border-b border-red-100 bg-red-50 flex items-center gap-3">
+          <AlertTriangle className="w-5 h-5 text-red-500 shrink-0" />
+          <h3 className="font-black text-sm uppercase tracking-wider text-red-700">{title}</h3>
+        </div>
+        <div className="px-6 py-5">
+          <p className="text-sm text-zinc-600 leading-relaxed">{message}</p>
+        </div>
+        <div className="px-6 pb-6">
+          <button
+            onClick={onClose}
+            className="w-full py-3 bg-zinc-900 hover:bg-zinc-700 text-white rounded-2xl font-bold text-sm transition-colors"
+          >
+            Dismiss
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Modal state descriptor ────────────────────────────────────────────────────
+type ModalState =
+  | null
+  | { type: 'confirm'; title: string; message: string; danger?: boolean; onConfirm: () => void }
+  | { type: 'input';   title: string; label: string; placeholder?: string; onConfirm: (v: string) => void }
+  | { type: 'alert';   title: string; message: string };
 
 export function BandsTab({ event }: { event: any }) {
   const [bands, setBands] = useState<any[]>([]);
@@ -19,6 +157,9 @@ export function BandsTab({ event }: { event: any }) {
   const [stats, setStats] = useState({ total: 0, available: 0, assigned: 0, void: 0 });
   const [range, setRange] = useState({ start: 1, end: 500 });
   const [searchTerm, setSearchTerm] = useState('');
+  const [modal, setModal] = useState<ModalState>(null);
+
+  const closeModal = () => setModal(null);
 
   useEffect(() => {
     if (event) fetchBands();
@@ -44,73 +185,88 @@ export function BandsTab({ event }: { event: any }) {
   }
 
   async function generateBands() {
-    if (!confirm(`Generate bands ${range.start} to ${range.end} for ${event.name}?`)) return;
-    setLoading(true);
-    
-    const newBands = [];
-    for (let i = range.start; i <= range.end; i++) {
-      const displayNum = i;
-      const padded = displayNum.toString().padStart(3, '0');
-      const randomSuffix = Math.random().toString(36).substring(2, 8);
-      const bandId = `${event.slug}-${padded}-${randomSuffix}`;
-      
-      newBands.push({
-        band_id: bandId,
-        event_id: event.id,
-        display_number: displayNum,
-        status: 'available'
-      });
-    }
-
-    const { error } = await supabase.from('bands').insert(newBands);
-    if (error) {
-      alert(error.message);
-    } else {
-      fetchBands();
-    }
-    setLoading(false);
+    setModal({
+      type: 'confirm',
+      title: 'Generate Bands',
+      message: `Generate bands ${range.start} to ${range.end} for "${event.name}"? This will create ${range.end - range.start + 1} new band records.`,
+      onConfirm: async () => {
+        closeModal();
+        setLoading(true);
+        const newBands = [];
+        for (let i = range.start; i <= range.end; i++) {
+          const padded = i.toString().padStart(3, '0');
+          const randomSuffix = Math.random().toString(36).substring(2, 8);
+          newBands.push({
+            band_id: `${event.slug}-${padded}-${randomSuffix}`,
+            event_id: event.id,
+            display_number: i,
+            status: 'available',
+          });
+        }
+        const { error } = await supabase.from('bands').insert(newBands);
+        if (error) {
+          setModal({ type: 'alert', title: 'Generation Failed', message: error.message });
+        } else {
+          fetchBands();
+        }
+        setLoading(false);
+      },
+    });
   }
 
   async function resetBands() {
     if (event.status !== 'draft') {
-      alert('Bands can only be reset while the event is in DRAFT status.');
+      setModal({
+        type: 'alert',
+        title: 'Cannot Reset',
+        message: 'Bands can only be reset while the event is in DRAFT status. Change the event status to Draft before resetting inventory.',
+      });
       return;
     }
-    if (!confirm('BIG WARNING: This will reset ALL bands to available and unlink all athletes. This cannot be undone. Results will remain but will be unlinked from current athletes if they are re-assigned. Continue?')) return;
-    
-    setLoading(true);
-    const { error } = await supabase
-      .from('bands')
-      .update({ status: 'available', athlete_id: null, assigned_at: null, assigned_by: null })
-      .eq('event_id', event.id);
-    
-    if (error) alert(error.message);
-    else fetchBands();
-    setLoading(false);
+    setModal({
+      type: 'confirm',
+      title: 'Reset All Bands',
+      danger: true,
+      message: 'This will reset ALL bands to available and unlink all athletes. This cannot be undone. Results will remain but athletes will need to be re-assigned.',
+      onConfirm: async () => {
+        closeModal();
+        setLoading(true);
+        const { error } = await supabase
+          .from('bands')
+          .update({ status: 'available', athlete_id: null, assigned_at: null, assigned_by: null })
+          .eq('event_id', event.id);
+        if (error) setModal({ type: 'alert', title: 'Reset Failed', message: error.message });
+        else fetchBands();
+        setLoading(false);
+      },
+    });
   }
 
   async function voidBand(band: any) {
-    if (!confirm(`Void band #${band.display_number}? This will unlink the athlete.`)) return;
-    setLoading(true);
-    
-    // 1. Update band status to void
-    const { error: bandError } = await supabase
-      .from('bands')
-      .update({ status: 'void' })
-      .eq('band_id', band.band_id);
-    
-    if (bandError) {
-      alert(bandError.message);
-    } else if (band.athlete_id) {
-      // 2. Unlink from athlete
-      await supabase
-        .from('athletes')
-        .update({ band_id: null })
-        .eq('id', band.athlete_id);
-    }
-    
-    fetchBands();
-    setLoading(false);
+    setModal({
+      type: 'confirm',
+      title: `Void Band #${band.display_number}`,
+      danger: true,
+      message: `Void band #${band.display_number}${band.athletes ? ` (assigned to ${band.athletes.first_name} ${band.athletes.last_name})` : ''}? The athlete will be unlinked and will need a replacement band.`,
+      onConfirm: async () => {
+        closeModal();
+        setLoading(true);
+        const { error: bandError } = await supabase
+          .from('bands')
+          .update({ status: 'void' })
+          .eq('band_id', band.band_id);
+        if (bandError) {
+          setModal({ type: 'alert', title: 'Void Failed', message: bandError.message });
+        } else if (band.athlete_id) {
+          await supabase
+            .from('athletes')
+            .update({ band_id: null })
+            .eq('id', band.athlete_id);
+        }
+        fetchBands();
+        setLoading(false);
+      },
+    });
   }
 
   async function handleImportCSV(e: React.ChangeEvent<HTMLInputElement>) {
@@ -119,16 +275,20 @@ export function BandsTab({ event }: { event: any }) {
 
     setLoading(true);
     const reader = new FileReader();
-    reader.onload = async (e) => {
-      const text = e.target?.result as string;
+    reader.onload = async (evt) => {
+      const text = evt.target?.result as string;
       const lines = text.split('\n').filter(l => l.trim());
       const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-      
-      const bandIdIdx = headers.indexOf('band_id');
-      const displayNumIdx = headers.indexOf('display_number');
+
+      const bandIdIdx      = headers.indexOf('band_id');
+      const displayNumIdx  = headers.indexOf('display_number');
 
       if (bandIdIdx === -1 || displayNumIdx === -1) {
-        alert('CSV must have band_id and display_number columns.');
+        setModal({
+          type: 'alert',
+          title: 'Invalid CSV Format',
+          message: 'The uploaded CSV must contain "band_id" and "display_number" column headers.',
+        });
         setLoading(false);
         return;
       }
@@ -136,44 +296,51 @@ export function BandsTab({ event }: { event: any }) {
       const newBands = lines.slice(1).map(line => {
         const parts = line.split(',');
         return {
-          band_id: parts[bandIdIdx].trim(),
+          band_id:        parts[bandIdIdx].trim(),
           display_number: parseInt(parts[displayNumIdx].trim()),
-          event_id: event.id,
-          status: 'available'
+          event_id:       event.id,
+          status:         'available',
         };
       });
 
       const { error } = await supabase.from('bands').insert(newBands);
-      if (error) alert(error.message);
-      else fetchBands();
+      if (error) {
+        setModal({ type: 'alert', title: 'Import Failed', message: error.message });
+      } else {
+        fetchBands();
+      }
       setLoading(false);
     };
     reader.readAsText(file);
+    // Reset input so same file can be re-selected if needed
+    e.target.value = '';
   }
 
   async function reissueBand(athleteId: string, oldBandId: string) {
-    const newBandId = prompt('Enter new Band ID to assign:');
-    if (!newBandId) return;
-
-    setLoading(true);
-    
-    // 1. Void old band
-    await supabase.from('bands').update({ status: 'void' }).eq('band_id', oldBandId);
-    
-    // 2. Assign new band
-    const { error } = await supabase
-      .from('bands')
-      .update({ status: 'assigned', athlete_id: athleteId, assigned_at: new Date().toISOString() })
-      .eq('band_id', newBandId);
-    
-    if (error) {
-      alert(error.message);
-    } else {
-      // 3. Update athlete
-      await supabase.from('athletes').update({ band_id: newBandId }).eq('id', athleteId);
-      fetchBands();
-    }
-    setLoading(false);
+    setModal({
+      type: 'input',
+      title: 'Reissue Band',
+      label: 'New Band ID',
+      placeholder: 'e.g. event-slug-042-abc123',
+      onConfirm: async (newBandId: string) => {
+        closeModal();
+        setLoading(true);
+        // 1. Void old band
+        await supabase.from('bands').update({ status: 'void' }).eq('band_id', oldBandId);
+        // 2. Assign new band
+        const { error } = await supabase
+          .from('bands')
+          .update({ status: 'assigned', athlete_id: athleteId, assigned_at: new Date().toISOString() })
+          .eq('band_id', newBandId);
+        if (error) {
+          setModal({ type: 'alert', title: 'Reissue Failed', message: error.message });
+        } else {
+          await supabase.from('athletes').update({ band_id: newBandId }).eq('id', athleteId);
+          fetchBands();
+        }
+        setLoading(false);
+      },
+    });
   }
 
   const filteredBands = bands.filter(b => 
@@ -185,7 +352,34 @@ export function BandsTab({ event }: { event: any }) {
   if (!event) return <div className="p-8 text-center text-zinc-400">Select an event to manage bands.</div>;
 
   return (
-    <motion.div 
+    <>
+    {/* ── Modal renderer ───────────────────────────────────────────────── */}
+    {modal?.type === 'confirm' && (
+      <ConfirmModal
+        title={modal.title}
+        message={modal.message}
+        danger={modal.danger}
+        onConfirm={modal.onConfirm}
+        onCancel={closeModal}
+      />
+    )}
+    {modal?.type === 'input' && (
+      <InputModal
+        title={modal.title}
+        label={modal.label}
+        placeholder={modal.placeholder}
+        onConfirm={modal.onConfirm}
+        onCancel={closeModal}
+      />
+    )}
+    {modal?.type === 'alert' && (
+      <AlertModal
+        title={modal.title}
+        message={modal.message}
+        onClose={closeModal}
+      />
+    )}
+    <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       className="space-y-6"
@@ -342,6 +536,7 @@ export function BandsTab({ event }: { event: any }) {
         </div>
       </div>
     </motion.div>
+    </>
   );
 }
 

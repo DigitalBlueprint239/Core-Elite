@@ -2,15 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Calendar, 
-  Settings, 
-  Database, 
-  CreditCard, 
-  ChevronRight, 
-  Plus, 
-  Copy, 
-  Archive, 
+import {
+  Calendar,
+  Settings,
+  Database,
+  CreditCard,
+  ChevronRight,
+  Plus,
+  Copy,
+  Archive,
   CheckCircle2,
   AlertCircle,
   LayoutGrid,
@@ -18,7 +18,8 @@ import {
   Activity,
   FileText,
   ShieldAlert,
-  Home
+  Home,
+  Users,
 } from 'lucide-react';
 import { EventsTab } from './admin-ops/EventsTab';
 import { StationsTab } from './admin-ops/StationsTab';
@@ -28,9 +29,10 @@ import { ResultsTab } from './admin-ops/ResultsTab';
 import { WaiversTab } from './admin-ops/WaiversTab';
 import { IncidentsTab } from './admin-ops/IncidentsTab';
 import { AuditTab } from './admin-ops/AuditTab';
+import { AthletesTab } from './admin-ops/AthletesTab';
 
 export default function AdminOps() {
-  const [activeTab, setActiveTab] = useState<'events' | 'stations' | 'drills' | 'bands' | 'results' | 'waivers' | 'incidents' | 'audit'>('events');
+  const [activeTab, setActiveTab] = useState<'events' | 'stations' | 'drills' | 'bands' | 'athletes' | 'results' | 'waivers' | 'incidents' | 'audit'>('events');
   const [activeEvent, setActiveEvent] = useState<any>(null);
   const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -152,11 +154,17 @@ export default function AdminOps() {
             icon={<ClipboardList />} 
             label="Drills" 
           />
-          <NavButton 
-            active={activeTab === 'bands'} 
-            onClick={() => setActiveTab('bands')} 
-            icon={<CreditCard />} 
-            label="Bands" 
+          <NavButton
+            active={activeTab === 'bands'}
+            onClick={() => setActiveTab('bands')}
+            icon={<CreditCard />}
+            label="Bands"
+          />
+          <NavButton
+            active={activeTab === 'athletes'}
+            onClick={() => setActiveTab('athletes')}
+            icon={<Users />}
+            label="Athletes"
           />
           <NavButton 
             active={activeTab === 'results'} 
@@ -210,6 +218,9 @@ export default function AdminOps() {
             )}
             {activeTab === 'bands' && (
               <BandsTab event={activeEvent} />
+            )}
+            {activeTab === 'athletes' && (
+              <AthletesTab event={activeEvent} />
             )}
             {activeTab === 'results' && (
               <ResultsTab eventId={activeEvent?.id} />

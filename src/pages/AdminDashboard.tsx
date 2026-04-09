@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { generateArmsCSV, downloadCSV, buildExportFilename, ExportableAthlete } from '../lib/b2b-exports';
 import { supabase } from '../lib/supabase';
 import { motion } from 'motion/react';
 import {
@@ -35,23 +36,66 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [scoreSortDir, setScoreSortDir] = useState<'desc' | 'asc'>('desc');
   const PAGE_SIZE = 20;
 
   const handleExport = async () => {
     setExporting(true);
+    setExportError(null);
     try {
-      const { data: event } = await supabase.from('events').select('id').eq('status', 'live').single();
-      if (!event) throw new Error('No live event found');
+      // Resolve live event
+      const { data: event } = await supabase
+        .from('events')
+        .select('id, name')
+        .eq('status', 'live')
+        .maybeSingle();
+      if (!event) throw new Error('No live event found. Set an event to "live" status first.');
 
-      const { data, error } = await supabase.rpc('admin_export_event_results', {
-        p_event_id: event.id
-      });
-      if (error) throw error;
-      alert(data.message || 'Export job queued successfully.');
+      // Fetch athletes for this event
+      const { data: athleteRows, error: athErr } = await supabase
+        .from('athletes')
+        .select('id, first_name, last_name, position, high_school, grad_year, height, weight')
+        .eq('event_id', event.id);
+      if (athErr) throw athErr;
+
+      // Fetch non-voided results for this event
+      const { data: resultRows, error: resErr } = await supabase
+        .from('results')
+        .select('athlete_id, drill_type, value_num')
+        .eq('event_id', event.id)
+        .eq('voided', false);
+      if (resErr) throw resErr;
+
+      // Build best-result-per-drill map
+      const bestMap: Record<string, Record<string, { value_num: number }>> = {};
+      for (const r of (resultRows ?? [])) {
+        if (!bestMap[r.athlete_id]) bestMap[r.athlete_id] = {};
+        const prev = bestMap[r.athlete_id][r.drill_type];
+        // For time drills (lower = better) and rep/jump drills (higher = better),
+        // using simple lower-wins here; CoachPortal uses per-drill logic.
+        if (!prev || r.value_num < prev.value_num) {
+          bestMap[r.athlete_id][r.drill_type] = { value_num: r.value_num };
+        }
+      }
+
+      const exportable: ExportableAthlete[] = (athleteRows ?? []).map((a: any) => ({
+        id:          a.id,
+        first_name:  a.first_name,
+        last_name:   a.last_name,
+        position:    a.position ?? '',
+        high_school: a.high_school,
+        grad_year:   a.grad_year,
+        height:      a.height,
+        weight:      a.weight,
+        bestResults: bestMap[a.id] ?? {},
+      }));
+
+      const csv = generateArmsCSV(exportable, event.name);
+      downloadCSV(csv, buildExportFilename(event.name));
     } catch (err: any) {
-      alert('Export failed: ' + err.message);
+      setExportError(err.message ?? 'Export failed');
     } finally {
       setExporting(false);
     }
@@ -129,36 +173,6 @@ export default function AdminDashboard() {
   const paginatedAthletes = sortedAthletes.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   const totalPages = Math.ceil(filteredAthletes.length / PAGE_SIZE);
 
-  const exportCSV = () => {
-    const drillIds = DRILL_CATALOG.map(d => d.id);
-    const headers = ['ID', 'Number', 'Name', 'Position', ...drillIds.map(id => DRILL_CATALOG.find(d => d.id === id)?.label || id)];
-    
-    const rows = athletes.map(a => {
-      const drillResults = drillIds.map(id => {
-        const res = a.results?.find((r: any) => r.drill_type === id);
-        return res ? res.value_num : '';
-      });
-
-      return [
-        a.id,
-        a.bands?.display_number || 'N/A',
-        `${a.first_name} ${a.last_name}`,
-        a.position || 'N/A',
-        ...drillResults
-      ];
-    });
-    
-    const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute("download", `combine_results_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
 
   return (
     <div className="min-h-screen bg-zinc-50">
@@ -180,14 +194,19 @@ export default function AdminDashboard() {
           </div>
           <div className="flex items-center gap-4">
             <CoachPortalLink />
-            <button
-              onClick={handleExport}
-              disabled={exporting}
-              className="flex items-center gap-2 px-4 py-2 bg-zinc-100 hover:bg-zinc-200 rounded-xl text-sm font-bold transition-colors disabled:opacity-50"
-            >
-              <Download className="w-4 h-4" />
-              {exporting ? 'Queueing...' : 'Export Results'}
-            </button>
+            <div className="flex flex-col items-end gap-1">
+              <button
+                onClick={handleExport}
+                disabled={exporting}
+                className="flex items-center gap-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-700 text-white rounded-xl text-sm font-bold transition-colors disabled:opacity-50"
+              >
+                <Download className="w-4 h-4" />
+                {exporting ? 'Building CSV...' : 'Export ARMS CSV'}
+              </button>
+              {exportError && (
+                <span className="text-xs text-red-600 font-medium max-w-xs text-right">{exportError}</span>
+              )}
+            </div>
             <div className="w-10 h-10 bg-zinc-200 rounded-full border-2 border-white shadow-sm" />
           </div>
         </div>
@@ -224,7 +243,7 @@ export default function AdminDashboard() {
                   type="text" 
                   placeholder="Search athletes..."
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={(e) => { setSearchTerm(e.target.value); setPage(0); }}
                   className="pl-10 pr-4 py-2 bg-white border border-zinc-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-zinc-900 w-64"
                 />
               </div>

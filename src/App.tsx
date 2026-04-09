@@ -4,7 +4,7 @@
  */
 
 import React, { Suspense, lazy } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { SyncIndicator } from './components/SyncIndicator';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { RouteGuard } from './components/RouteGuard';
@@ -23,6 +23,22 @@ const AdminOps = lazy(() => import('./pages/AdminOps'));
 const AdminDiagnostics = lazy(() => import('./pages/AdminDiagnostics'));
 const ParentPortal = lazy(() => import('./pages/ParentPortal'));
 const CoachPortal = lazy(() => import('./pages/CoachPortal'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const Lookup = lazy(() => import('./pages/Lookup'));
+const NotFound = lazy(() => import('./pages/NotFound'));
+
+// Enterprise portal — marketing/sales site (unauthenticated)
+const EnterpriseLayout       = lazy(() => import('./layouts/EnterpriseLayout'));
+const CommissionerOverview   = lazy(() => import('./pages/enterprise/CommissionerOverview'));
+const TrustCenter            = lazy(() => import('./pages/enterprise/TrustCenter'));
+
+// League Admin portal — operational command center (requires admin auth)
+const LeagueAdminLayout      = lazy(() => import('./layouts/LeagueAdminLayout'));
+const LeagueDashboard        = lazy(() => import('./pages/league-admin/LeagueDashboard'));
+const EventHub               = lazy(() => import('./pages/league-admin/EventHub'));
+const StaffAccessManagement  = lazy(() => import('./pages/league-admin/StaffAccessManagement'));
+const ComplianceAuditViewer  = lazy(() => import('./pages/league-admin/ComplianceAuditViewer'));
+const B2BExports             = lazy(() => import('./pages/league-admin/B2BExports'));
 
 export default function App() {
   return (
@@ -51,6 +67,7 @@ export default function App() {
                   <StationMode />
                 </RouteGuard>
               } />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/admin/login" element={<AdminLogin />} />
               <Route path="/admin/dashboard" element={
                 <RouteGuard requireAdmin>
@@ -72,7 +89,34 @@ export default function App() {
                   <CoachPortal />
                 </RouteGuard>
               } />
-              <Route path="*" element={<Navigate to="/" replace />} />
+              <Route path="/lookup" element={<Lookup />} />
+
+              {/* ── Enterprise Portal (/enterprise/*) ─────────────────
+                  Nested under EnterpriseLayout (Outlet). Completely
+                  separate nav and shell from the athlete/staff app.
+              ──────────────────────────────────────────────────────── */}
+              <Route path="/enterprise" element={<EnterpriseLayout />}>
+                <Route index element={<CommissionerOverview />} />
+                <Route path="trust-center" element={<TrustCenter />} />
+              </Route>
+
+              {/* ── League Admin Portal (/league-admin/*) ──────────────
+                  Operational command center. Fixed sidebar layout.
+                  Requires admin authentication (requireAdmin).
+              ──────────────────────────────────────────────────────── */}
+              <Route path="/league-admin" element={
+                <RouteGuard requireAdmin>
+                  <LeagueAdminLayout />
+                </RouteGuard>
+              }>
+                <Route index element={<LeagueDashboard />} />
+                <Route path="events" element={<EventHub />} />
+                <Route path="staff-access" element={<StaffAccessManagement />} />
+                <Route path="compliance" element={<ComplianceAuditViewer />} />
+                <Route path="exports" element={<B2BExports />} />
+              </Route>
+
+              <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
           <SyncIndicator />

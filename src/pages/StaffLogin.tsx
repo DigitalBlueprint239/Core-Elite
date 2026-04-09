@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { classifyAuthError } from '../lib/authErrors';
 import { LogIn, ShieldCheck, AlertCircle, ArrowLeft } from 'lucide-react';
 
 export default function StaffLogin() {
@@ -18,7 +19,7 @@ export default function StaffLogin() {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
-      setError(error.message);
+      setError(classifyAuthError(error));
       setLoading(false);
     } else {
       // Check for last used station
@@ -75,7 +76,7 @@ export default function StaffLogin() {
 
           <div className="space-y-1">
             <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Password</label>
-            <input 
+            <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -84,6 +85,14 @@ export default function StaffLogin() {
               autoComplete="current-password"
               required
             />
+            <div className="flex justify-end pt-1">
+              <Link
+                to="/forgot-password"
+                className="text-xs font-medium text-zinc-500 hover:text-zinc-900 underline-offset-2 hover:underline transition-colors"
+              >
+                Forgot password?
+              </Link>
+            </div>
           </div>
 
           <button 

@@ -1,12 +1,12 @@
 import { openDB, IDBPDatabase } from 'idb';
 import { tick } from './hlc';
 
-const DB_NAME = 'core_elite_combine_db';
-const DB_VERSION = 3; // v3: adds by_status index to outbox (idx_outbox_pending, v2 §3.3.3)
+export const DB_NAME = 'core_elite_combine_db';
+export const DB_VERSION = 4; // v4: adds event_config store for offline-safe PIN caching
 
 export interface OutboxItem {
-  id: string; // client_result_id
-  type: 'result' | 'device_status';
+  id: string; // client_result_id or client_audit_id
+  type: 'result' | 'device_status' | 'audit_log';
   payload: any;
   // Internal elapsed-time fields — used for backoff math only, NOT conflict resolution.
   // Date.now() is correct here: we are measuring duration, not ordering events.
@@ -15,7 +15,7 @@ export interface OutboxItem {
   retry_count: number;
   last_attempt_at?: number;
   error_message?: string;
-  status: 'pending' | 'retrying' | 'dead_letter';
+  status: 'pending' | 'retrying' | 'dead_letter' | 'pending_review';
   // HLC timestamp for deterministic conflict resolution (v2 §3.1.3, v3 §3.1.2).
   // Format: "{pt:016d}_{l:010d}_{nodeId}" — lexicographically sortable.
   // Generated once at write time via tick(). Passed to the server in meta
@@ -48,11 +48,15 @@ export async function initDB() {
       }
       // Version 3: add status index for efficient pending/retrying queries
       // (idx_outbox_pending equivalent, v2 §3.3.3).
-      // Allows syncOutbox to use db.getAllFromIndex('outbox', 'by_status', ...)
-      // instead of a full-store scan filtered in JS.
       if (oldVersion < 3) {
         const outboxStore = transaction.objectStore('outbox');
         outboxStore.createIndex('by_status', 'status', { unique: false });
+      }
+      // Version 4: add event_config store for offline-safe override PIN caching.
+      // Keyed by a composite string: e.g. "override_pin:<event_id>".
+      // All pin hash operations go through setEventConfig / getEventConfig below.
+      if (oldVersion < 4) {
+        db.createObjectStore('event_config', { keyPath: 'id' });
       }
     },
   });
@@ -136,4 +140,46 @@ export async function resetDeadLetterItem(id: string) {
     error_message: undefined,
     last_attempt_at: undefined
   });
+}
+
+// ---------------------------------------------------------------------------
+// event_config store — generic key/value pairs scoped to an event.
+// Primary use: caching the hashed admin override PIN for offline validation.
+// ---------------------------------------------------------------------------
+
+export interface EventConfigRecord {
+  id: string;           // Composite key, e.g. "override_pin:<event_id>"
+  [key: string]: unknown;
+}
+
+export async function setEventConfig(record: EventConfigRecord): Promise<void> {
+  const db = await initDB();
+  await db.put('event_config', record);
+}
+
+export async function getEventConfig(id: string): Promise<EventConfigRecord | undefined> {
+  const db = await initDB();
+  return db.get('event_config', id);
+}
+
+export async function deleteEventConfig(id: string): Promise<void> {
+  const db = await initDB();
+  await db.delete('event_config', id);
+}
+
+// ---------------------------------------------------------------------------
+// station_config queue persistence — survive page refresh / browser crash.
+// Keyed by "queue_<stationId>". The data field holds the raw queue array
+// from StationMode state. Written on every queue mutation, read on mount.
+// ---------------------------------------------------------------------------
+
+export async function saveStationQueue(stationId: string, queue: any[]): Promise<void> {
+  const db = await initDB();
+  await db.put('station_config', { id: `queue_${stationId}`, data: queue });
+}
+
+export async function loadStationQueue(stationId: string): Promise<any[]> {
+  const db = await initDB();
+  const record = await db.get('station_config', `queue_${stationId}`);
+  return record?.data || [];
 }

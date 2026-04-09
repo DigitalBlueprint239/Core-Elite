@@ -1,22 +1,74 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Station, Athlete } from '../lib/types';
 import { QRScanner } from '../components/QRScanner';
-import { addToOutbox, getCachedAthlete, cacheAthlete } from '../lib/offline';
+import { addToOutbox, getCachedAthlete, cacheAthlete, saveStationQueue, loadStationQueue } from '../lib/offline';
+import { seedOverridePin, verifyOverridePin, isOverridePinSeeded } from '../lib/overridePin';
 import { useOfflineSync } from '../hooks/useOfflineSync';
 import { motion, AnimatePresence } from 'motion/react';
-import { QrCode, User, Send, RefreshCw, ChevronLeft, AlertCircle, CheckCircle2, Wifi, WifiOff, History, AlertTriangle, Zap, ListOrdered, X, ShieldAlert, ArrowLeft, LayoutGrid } from 'lucide-react';
+import { QrCode, User, Send, RefreshCw, ChevronLeft, AlertCircle, CheckCircle2, Wifi, WifiOff, History, AlertTriangle, Zap, ListOrdered, X, ShieldAlert, ArrowLeft, LayoutGrid, Delete } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { getDeviceId } from '../lib/device';
 import { tick } from '../lib/hlc';
 import { DRILL_CATALOG } from '../constants';
-import { validateResult, DrillId } from '../lib/scoring';
+import { validateResult, DrillId, BES_ELIGIBLE_DRILLS } from '../lib/scoring';
+
+// ---------------------------------------------------------------------------
+// NumericKeypad
+// Oversized touch-first keypad for drill result entry. Replaces the native
+// device keyboard — eliminates layout shifts and reduces mis-taps on tablets.
+// ---------------------------------------------------------------------------
+const KEYPAD_KEYS = ['7','8','9','4','5','6','1','2','3','.','0','⌫'] as const;
+
+function NumericKeypad({
+  value,
+  onChange,
+  disabled = false,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+}) {
+  const press = (key: string) => {
+    if (disabled) return;
+    if (key === '⌫') { onChange(value.slice(0, -1)); return; }
+    if (key === '.' && value.includes('.')) return;   // one decimal only
+    if (value === '0' && key !== '.') { onChange(key); return; } // no leading zero
+    if (value.length >= 7) return;                              // cap at 7 chars
+    onChange(value + key);
+  };
+
+  return (
+    <div className="grid grid-cols-3 gap-2.5">
+      {KEYPAD_KEYS.map((key) => (
+        <button
+          key={key}
+          type="button"
+          onClick={() => press(key)}
+          disabled={disabled}
+          className={`
+            h-16 rounded-2xl font-black select-none
+            transition-transform active:scale-95 disabled:opacity-40
+            ${key === '⌫'
+              ? 'bg-zinc-200 text-zinc-600 hover:bg-zinc-300'
+              : key === '.'
+              ? 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200 text-3xl leading-none'
+              : 'bg-white border-2 border-zinc-200 text-zinc-900 text-2xl hover:border-zinc-400 shadow-sm active:bg-zinc-50'
+            }
+          `}
+        >
+          {key === '⌫' ? <Delete className="w-6 h-6 mx-auto" /> : key}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export default function StationMode() {
   const { stationId } = useParams();
   const navigate = useNavigate();
-  const { isOnline, pendingCount, requiresForceSync, lastSyncTime, syncOutbox, forceSync, updatePendingCount } = useOfflineSync();
+  const { isOnline, pendingCount, requiresForceSync, lastSyncTime, syncOutbox, forceSync, updatePendingCount, duplicateChallenges, resolveDuplicateChallenge } = useOfflineSync();
 
   const [station, setStation] = useState<Station | null>(null);
   const [athlete, setAthlete] = useState<Athlete | any>(null);
@@ -25,7 +77,7 @@ export default function StationMode() {
   const [resultValue, setResultValue] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastSubmitted, setLastSubmitted] = useState<any>(null);
+  const [successToast, setSuccessToast] = useState<string | null>(null);
   const [attempts, setAttempts] = useState<number[]>([]);
   const [showOutlierModal, setShowOutlierModal] = useState(false);
   const [outlierReason, setOutlierReason] = useState('');
@@ -42,6 +94,40 @@ export default function StationMode() {
     clientResultId: string;
   } | null>(null);
 
+  // Admin override modal — for BLOCK values (Gates 2 & 3)
+  const [showOverrideModal, setShowOverrideModal] = useState(false);
+  const [overridePIN, setOverridePIN] = useState('');
+  const [overrideReason, setOverrideReason] = useState('');
+  const [overrideError, setOverrideError] = useState<string | null>(null);
+  const [overrideAttempts, setOverrideAttempts] = useState(0);
+  const [overrideLoading, setOverrideLoading] = useState(false);
+  const [pinSeeded, setPinSeeded] = useState(false);
+
+  // ---------------------------------------------------------------------------
+  // Real-time validation — recomputes on every keystroke.
+  // Only fires for the 5 drills that have peer-reviewed gate thresholds.
+  // ---------------------------------------------------------------------------
+  const liveValidation = useMemo(() => {
+    if (!station?.drill_type || !resultValue) return null;
+    const val = parseFloat(resultValue);
+    if (isNaN(val) || val <= 0) return null;
+    const drillId = station.drill_type as DrillId;
+    if (!BES_ELIGIBLE_DRILLS.has(drillId)) return null;
+    return validateResult(drillId, val);
+  }, [resultValue, station?.drill_type]);
+
+  // Narrow to the failed branch — TypeScript can't narrow a discriminated union
+  // across a ternary, so we extract a typed intermediate first.
+  const invalidResult = liveValidation?.valid === false ? liveValidation : null;
+  const blockGate   = invalidResult?.gate   ?? null;
+  const blockReason = invalidResult?.reason ?? null;
+
+  /** Gates 2 & 3: physically impossible or sensor malfunction — BLOCK submission */
+  const isBlocked = blockGate === 'below_physical_floor' || blockGate === 'above_max_threshold';
+
+  /** Gate 4: valid range but extraordinary — FLAG for review (submit enabled) */
+  const isFlagged = blockGate === 'extraordinary_result';
+
   useEffect(() => {
     async function fetchStation() {
       const { data, error } = await supabase
@@ -49,12 +135,67 @@ export default function StationMode() {
         .select('*')
         .eq('id', stationId)
         .single();
-      
-      if (data) setStation(data);
+
+      if (data) {
+        setStation(data);
+        // Seed override PIN hash while we're online and have the event_id.
+        if (navigator.onLine) {
+          const { data: eventData } = await supabase
+            .from('events')
+            .select('override_pin')
+            .eq('id', data.event_id)
+            .single();
+          if (eventData?.override_pin) {
+            await seedOverridePin(data.event_id, eventData.override_pin);
+          }
+        }
+        const seeded = await isOverridePinSeeded(data.event_id);
+        setPinSeeded(seeded);
+      }
       setLoading(false);
     }
     fetchStation();
   }, [stationId]);
+
+  // Re-seed the override PIN hash whenever we come back online.
+  // Handles: PIN rotation, first load on a device that was offline at station open.
+  useEffect(() => {
+    if (!isOnline || !station?.event_id) return;
+    async function reseedPin() {
+      const { data: eventData } = await supabase
+        .from('events')
+        .select('override_pin')
+        .eq('id', station!.event_id)
+        .single();
+      if (eventData?.override_pin) {
+        await seedOverridePin(station!.event_id, eventData.override_pin);
+        setPinSeeded(true);
+      }
+    }
+    reseedPin();
+  }, [isOnline, station?.event_id]);
+
+  // Restore lane-mode queue from IndexedDB on mount (survives page refresh / crash).
+  useEffect(() => {
+    if (!stationId) return;
+    loadStationQueue(stationId).then(saved => {
+      if (saved.length > 0) setQueue(saved);
+    });
+  }, [stationId]);
+
+  // Persist lane-mode queue to IndexedDB on every change.
+  // Runs for any queue length including 0 (clears the stored queue on submit/clear).
+  useEffect(() => {
+    if (!stationId) return;
+    saveStationQueue(stationId, queue);
+  }, [queue, stationId]);
+
+  // Auto-dismiss success toast after 1.5 s
+  useEffect(() => {
+    if (!successToast) return;
+    const t = setTimeout(() => setSuccessToast(null), 1500);
+    return () => clearTimeout(t);
+  }, [successToast]);
 
   useEffect(() => {
     if (!station) return;
@@ -183,10 +324,21 @@ export default function StationMode() {
 
     setSubmitting(true);
 
-    // Gate 4 — extraordinary_result intercept (Phase 4 fail-soft).
-    // Applies per rep. Gates 1–3 are hard physical-impossibility failures
-    // and are not intercepted here — they propagate as validation errors.
     const gateCheck = validateResult(station.drill_type as DrillId, val);
+
+    // Gate 2 & 3 safety net — these should be unreachable in normal flow because
+    // the submit button is disabled when isBlocked is true. This guard prevents
+    // a blocked value reaching the outbox if there is any race-condition path.
+    if (
+      gateCheck.valid === false &&
+      (gateCheck.gate === 'below_physical_floor' || gateCheck.gate === 'above_max_threshold')
+    ) {
+      setError('This value is blocked. Use "Request Admin Override" if the reading is accurate.');
+      setSubmitting(false);
+      return;
+    }
+
+    // Gate 4 — extraordinary_result intercept (fail-soft: flag for review, do not discard).
     if (gateCheck.valid === false && gateCheck.gate === 'extraordinary_result') {
       const clientResultId = uuidv4();
       const payload = {
@@ -250,13 +402,8 @@ export default function StationMode() {
       const newAttempts = [...attempts, val];
 
       if (newAttempts.length >= attemptsAllowed) {
-        // All allowed reps committed — show confirmation and reset for next athlete
-        setLastSubmitted({
-          athleteName:   athlete.name,
-          athleteNumber: athlete.display_number,
-          value:         val,
-          attempts:      newAttempts,
-        });
+        // All allowed reps committed — toast fires, auto-return to scan
+        setSuccessToast(`Saved: ${val} for ${athlete.name}`);
         setAthlete(null);
         setResultValue('');
         setAttempts([]);
@@ -264,7 +411,7 @@ export default function StationMode() {
         setShowOutlierModal(false);
         setScanning(true);
       } else {
-        // More reps allowed — persist this rep to state and stay on same athlete
+        // More reps allowed — stay on same athlete
         setAttempts(newAttempts);
         setResultValue('');
       }
@@ -303,12 +450,7 @@ export default function StationMode() {
       const newAttempts = [...attempts, scoutReviewPending.flaggedValue];
 
       if (newAttempts.length >= attemptsAllowed) {
-        setLastSubmitted({
-          athleteName:   athlete.name,
-          athleteNumber: athlete.display_number,
-          value:         scoutReviewPending.flaggedValue,
-          attempts:      newAttempts,
-        });
+        setSuccessToast(`Saved: ${scoutReviewPending.flaggedValue} for ${athlete.name}`);
         setScoutReviewPending(null);
         setAthlete(null);
         setResultValue('');
@@ -335,6 +477,151 @@ export default function StationMode() {
     setAttempts([]);
   };
 
+  // ---------------------------------------------------------------------------
+  // Admin override — called when staff submits PIN + reason for a BLOCKED value.
+  // Requires: events.override_pin column (see migration: add_override_pin_to_events).
+  // Writes to audit_log on every attempt (success and failure).
+  // Locks after 3 failed PIN entries.
+  // ---------------------------------------------------------------------------
+  const handleOverrideConfirm = async () => {
+    if (!resultValue || !athlete) return;
+    if (overrideAttempts >= 3) return;
+
+    if (!overrideReason.trim()) {
+      setOverrideError('A reason is required before an override can be approved.');
+      return;
+    }
+    if (!overridePIN.trim()) {
+      setOverrideError('Please enter the admin override PIN.');
+      return;
+    }
+
+    setOverrideLoading(true);
+    setOverrideError(null);
+
+    try {
+      // Verify PIN offline — compares PBKDF2 hash of entered PIN against the hash
+      // cached in IndexedDB during station load (or on last reconnect). No network needed.
+      const pinResult = await verifyOverridePin(station.event_id, overridePIN);
+
+      if (!pinResult.valid) {
+        const newAttempts = overrideAttempts + 1;
+        setOverrideAttempts(newAttempts);
+
+        if (pinResult.reason?.includes('not cached')) {
+          // Hash was never seeded — only happens if the device was never online
+          // after the event's PIN was set.
+          setOverrideError(pinResult.reason);
+          setOverrideLoading(false);
+          return;
+        }
+
+        const remaining = 3 - newAttempts;
+        setOverrideError(
+          remaining <= 0
+            ? 'Override locked — too many failed PIN attempts. Re-scan the athlete to reset.'
+            : `Incorrect PIN. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`
+        );
+        setOverridePIN('');
+        setOverrideLoading(false);
+        return;
+      }
+
+      // PIN accepted — build payload with override metadata
+      const val = parseFloat(resultValue);
+      const attemptNumber = attempts.length + 1;
+      const clientResultId = uuidv4();
+      const hlcTimestamp = tick();
+
+      const overridePayload = {
+        client_result_id: clientResultId,
+        event_id:         station.event_id,
+        athlete_id:       athlete.athlete_id,
+        band_id:          athlete.band_id,
+        station_id:       station.id,
+        drill_type:       station.drill_type,
+        value_num:        val,
+        attempt_number:   attemptNumber,
+        meta: {
+          admin_override:  true,
+          override_reason: overrideReason.trim(),
+          gate_triggered:  blockGate,
+          block_reason:    blockReason,
+          device_id:       getDeviceId(),
+          hlc_timestamp:   hlcTimestamp,
+        },
+        recorded_at: new Date().toISOString(),
+      };
+
+      await addToOutbox({
+        id:            clientResultId,
+        type:          'result',
+        payload:       overridePayload,
+        timestamp:     Date.now(),
+        attempts:      0,
+        hlc_timestamp: hlcTimestamp,
+      });
+
+      // Audit trail — queued through outbox so it persists and syncs offline.
+      // The audit_log handler in useOfflineSync will insert this when online.
+      await addToOutbox({
+        id:   `audit-${clientResultId}`,
+        type: 'audit_log',
+        payload: {
+          action:      'result_override',
+          entity_type: 'result',
+          entity_id:   clientResultId,
+          event_id:    station.event_id,
+          new_value: {
+            drill_type:      station.drill_type,
+            value_num:       val,
+            athlete_id:      athlete.athlete_id,
+            band_id:         athlete.band_id,
+            override_reason: overrideReason.trim(),
+            device_id:       getDeviceId(),
+          },
+          old_value: {
+            gate_triggered: blockGate,
+            block_reason:   blockReason,
+          },
+        },
+        timestamp:     Date.now(),
+        attempts:      0,
+        hlc_timestamp: hlcTimestamp,
+      });
+
+      await updatePendingCount();
+
+      // Advance attempt state
+      const drillConfig = DRILL_CATALOG.find(d => d.id === station.drill_type);
+      const attemptsAllowed = drillConfig?.attempts_allowed || 1;
+      const newAttemptsList = [...attempts, val];
+
+      // Reset override modal state
+      setShowOverrideModal(false);
+      setOverridePIN('');
+      setOverrideReason('');
+      setOverrideAttempts(0);
+      setOverrideError(null);
+
+      if (newAttemptsList.length >= attemptsAllowed) {
+        setSuccessToast(`Override saved: ${val} for ${athlete.name}`);
+        setAthlete(null);
+        setResultValue('');
+        setAttempts([]);
+        setOutlierReason('');
+        setScanning(true);
+      } else {
+        setAttempts(newAttemptsList);
+        setResultValue('');
+      }
+    } catch (err) {
+      setOverrideError('Failed to process override. Check your connection and try again.');
+    } finally {
+      setOverrideLoading(false);
+    }
+  };
+
   const handleLaneSubmit = async (index: number) => {
     const item = queue[index];
     if (!item.result) return;
@@ -342,6 +629,16 @@ export default function StationMode() {
     const laneVal = parseFloat(item.result);
     if (isNaN(laneVal) || laneVal <= 0) {
       setError('Please enter a valid positive number.');
+      return;
+    }
+
+    // Block physically impossible values in lane mode too
+    const laneGate = validateResult(station.drill_type as DrillId, laneVal);
+    if (
+      laneGate.valid === false &&
+      (laneGate.gate === 'below_physical_floor' || laneGate.gate === 'above_max_threshold')
+    ) {
+      setError(`Blocked: ${laneGate.reason}`);
       return;
     }
 
@@ -597,14 +894,6 @@ export default function StationMode() {
               <QRScanner onScan={handleScan} />
             </div>
 
-            {lastSubmitted && (
-              <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-center gap-3">
-                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                <div className="text-sm">
-                  <span className="font-bold text-emerald-800">Saved:</span> {lastSubmitted.athleteName} (#{lastSubmitted.athleteNumber}) - {lastSubmitted.value}
-                </div>
-              </div>
-            )}
           </motion.div>
         ) : (
           <motion.div 
@@ -641,31 +930,87 @@ export default function StationMode() {
                       </div>
                     )}
                   </div>
-                  <input 
-                    type="number"
-                    step="0.01"
-                    inputMode="decimal"
+                  {/* Value display — driven by the keypad; no native keyboard needed */}
+                  <div className={`w-full px-6 py-5 text-5xl font-black rounded-2xl text-center border-2 transition-colors min-h-[88px] flex items-center justify-center ${
+                    isBlocked
+                      ? 'bg-red-50 border-red-400 text-red-700'
+                      : isFlagged
+                      ? 'bg-amber-50 border-amber-400 text-amber-700'
+                      : 'bg-zinc-50 border-zinc-200 text-zinc-900'
+                  }`}>
+                    {resultValue || <span className="text-zinc-300 text-4xl font-black">—</span>}
+                  </div>
+                  {/* Oversized numeric keypad — always visible, zero layout shift */}
+                  <NumericKeypad
                     value={resultValue}
-                    onChange={(e) => setResultValue(e.target.value)}
-                    className="w-full p-6 text-4xl font-black bg-zinc-50 border-2 border-zinc-100 rounded-2xl outline-none focus:border-zinc-900 text-center"
-                    placeholder="0.00"
-                    autoFocus
+                    onChange={setResultValue}
+                    disabled={submitting}
                   />
                 </div>
 
+                {/* ── Inline validation banner ─────────────────────────── */}
+                {isBlocked && (
+                  <div className="rounded-2xl overflow-hidden border-2 border-red-500 shadow-lg shadow-red-100">
+                    <div className="bg-red-600 px-4 py-3 flex items-center gap-3">
+                      <AlertTriangle className="w-5 h-5 text-white shrink-0" />
+                      <span className="text-white font-black text-sm uppercase tracking-wider">
+                        BLOCKED — {blockGate === 'below_physical_floor' ? 'Sensor Error / Below Minimum' : 'Sensor Malfunction / Above Maximum'}
+                      </span>
+                    </div>
+                    <div className="bg-red-50 px-4 py-3">
+                      <p className="text-sm text-red-800 font-medium leading-snug">
+                        {blockGate === 'below_physical_floor'
+                          ? `${resultValue} is below the physical minimum for this drill. Re-enter or request an override if the reading is accurate.`
+                          : `${resultValue} exceeds the maximum plausible value for this drill. Re-enter or request an override if the reading is accurate.`}
+                      </p>
+                    </div>
+                    {overrideAttempts < 3 ? (
+                      <button
+                        type="button"
+                        onClick={() => { setShowOverrideModal(true); setOverrideError(null); }}
+                        className="w-full h-14 bg-red-600 text-white font-black text-sm uppercase tracking-wider hover:bg-red-700 active:bg-red-800 transition-colors flex items-center justify-center gap-2"
+                      >
+                        <ShieldAlert className="w-4 h-4" />
+                        Request Admin Override
+                      </button>
+                    ) : (
+                      <div className="h-10 bg-red-100 flex items-center justify-center text-xs text-red-600 font-black uppercase tracking-wider">
+                        Override locked — too many failed PIN attempts
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {isFlagged && (
+                  <div className="rounded-2xl overflow-hidden border-2 border-amber-400">
+                    <div className="bg-amber-500 px-4 py-3 flex items-center gap-3">
+                      <AlertCircle className="w-5 h-5 text-white shrink-0" />
+                      <span className="text-white font-black text-sm uppercase tracking-wider">
+                        Extraordinary Result — Flagged for Scout Review
+                      </span>
+                    </div>
+                    <div className="bg-amber-50 px-4 py-3">
+                      <p className="text-sm text-amber-800 font-medium leading-snug">
+                        World-record territory. Result will be saved and routed to scout review before appearing on leaderboards.
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {/* ─────────────────────────────────────────────────────── */}
+
                 <div className="flex gap-3">
-                  <button 
-                    onClick={() => { setAthlete(null); setScanning(true); }}
-                    className="flex-1 py-4 border border-zinc-200 rounded-2xl font-bold text-zinc-500 hover:bg-zinc-50"
+                  <button
+                    onClick={() => { setAthlete(null); setResultValue(''); setScanning(true); }}
+                    className="flex-1 h-16 border-2 border-zinc-200 rounded-2xl font-bold text-zinc-500 hover:bg-zinc-50 active:scale-95 transition-all"
                   >
                     Cancel
                   </button>
-                  <button 
+                  <button
                     onClick={() => handleSubmit()}
-                    disabled={!resultValue || submitting}
-                    className="flex-[2] py-4 bg-zinc-900 text-white rounded-2xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
+                    disabled={!resultValue || submitting || isBlocked}
+                    className="flex-[2] h-16 bg-zinc-900 text-white rounded-2xl font-black text-lg shadow-lg flex items-center justify-center gap-2 disabled:opacity-40 active:scale-95 transition-all"
                   >
-                    {submitting ? 'Saving...' : 'Submit Result'}
+                    {submitting ? 'Saving…' : isFlagged ? 'Submit & Flag' : 'Submit Result'}
                     {!submitting && <Send className="w-5 h-5" />}
                   </button>
                 </div>
@@ -857,9 +1202,118 @@ export default function StationMode() {
         )}
       </AnimatePresence>
 
+      {/* ── Admin Override Modal ─────────────────────────────────────── */}
+      <AnimatePresence>
+        {showOverrideModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-zinc-900/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.92 }}
+              className="bg-white w-full max-w-sm rounded-3xl p-8 space-y-6 shadow-2xl"
+            >
+              <div className="text-center space-y-2">
+                <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <ShieldAlert className="w-8 h-8" />
+                </div>
+                <h3 className="text-xl font-bold">Admin Override Required</h3>
+                <p className="text-zinc-500 text-sm">
+                  This value was blocked by the validation system. An admin PIN and a reason are required to save it.
+                </p>
+              </div>
+
+              {/* Blocked value summary */}
+              <div className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-1">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold uppercase text-zinc-400">Blocked Value</span>
+                  <span className="text-lg font-black text-red-700">{resultValue}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold uppercase text-zinc-400">Gate</span>
+                  <span className="text-xs font-bold text-red-600 uppercase">{blockGate?.replace(/_/g, ' ')}</span>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {/* Override reason — required */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                    Reason for Override <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={overrideReason}
+                    onChange={(e) => setOverrideReason(e.target.value)}
+                    className="w-full p-3 bg-zinc-50 border border-zinc-200 rounded-xl outline-none text-sm"
+                  >
+                    <option value="">Select a reason…</option>
+                    <option value="Verified by second official">Verified by second official</option>
+                    <option value="Sensor recalibrated, reading confirmed">Sensor recalibrated, reading confirmed</option>
+                    <option value="Video review confirms result">Video review confirms result</option>
+                    <option value="Manual timing confirms result">Manual timing confirms result</option>
+                    <option value="Other (documented separately)">Other (documented separately)</option>
+                  </select>
+                </div>
+
+                {/* Admin PIN */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                    Admin Override PIN <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={overridePIN}
+                    onChange={(e) => setOverridePIN(e.target.value.replace(/\D/g, ''))}
+                    disabled={overrideAttempts >= 3}
+                    className="w-full p-4 text-2xl font-black tracking-widest bg-zinc-50 border-2 border-zinc-200 rounded-xl outline-none focus:border-zinc-900 text-center disabled:opacity-40"
+                    placeholder="• • • • • •"
+                    autoComplete="off"
+                  />
+                  {overrideAttempts > 0 && overrideAttempts < 3 && (
+                    <p className="text-xs text-zinc-400 text-right">
+                      Attempt {overrideAttempts} of 3
+                    </p>
+                  )}
+                </div>
+
+                {overrideError && (
+                  <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-bold">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    {overrideError}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => {
+                    setShowOverrideModal(false);
+                    setOverridePIN('');
+                    setOverrideReason('');
+                    setOverrideError(null);
+                  }}
+                  className="flex-1 py-3 border border-zinc-200 rounded-xl font-bold text-zinc-500 hover:bg-zinc-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleOverrideConfirm}
+                  disabled={overrideLoading || overrideAttempts >= 3 || !overrideReason || !overridePIN}
+                  className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold shadow-lg shadow-red-200 hover:bg-red-700 disabled:opacity-40 transition-colors"
+                >
+                  {overrideLoading ? 'Verifying…' : 'Approve Override'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* ─────────────────────────────────────────────────────────────── */}
+
       <div className="fixed bottom-20 left-0 right-0 px-4 pointer-events-none">
         <div className="max-w-md mx-auto flex justify-center">
-          <button 
+          <button
             onClick={() => setScanning(true)}
             disabled={scanning}
             className="pointer-events-auto bg-white border border-zinc-200 shadow-lg px-6 py-3 rounded-full text-sm font-bold flex items-center gap-2 hover:bg-zinc-50 disabled:opacity-0 transition-opacity"
@@ -869,6 +1323,98 @@ export default function StationMode() {
           </button>
         </div>
       </div>
+
+      {/* ── Success Toast — auto-dismisses after 1.5 s, non-blocking ─── */}
+      <AnimatePresence>
+        {successToast && (
+          <motion.div
+            initial={{ opacity: 0, y: -16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -16 }}
+            transition={{ duration: 0.18 }}
+            className="fixed top-4 left-4 right-4 z-[60] max-w-md mx-auto pointer-events-none"
+          >
+            <div className={`px-5 py-4 rounded-2xl shadow-2xl flex items-center gap-3 ${
+              successToast.startsWith('Override')
+                ? 'bg-orange-600 text-white'
+                : 'bg-zinc-900 text-white'
+            }`}>
+              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+              <span className="font-bold text-sm">{successToast}</span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {/* ── Duplicate Record Challenge Modal ────────────────────────── */}
+      {duplicateChallenges.length > 0 && (() => {
+        const challenge = duplicateChallenges[0];
+        const drillConfig = DRILL_CATALOG.find(d => d.id === challenge.drillType);
+        const label = drillConfig?.label ?? challenge.drillType;
+        const unit  = drillConfig?.unit  ?? '';
+        const fmtVal = (v: number) => (unit === 'sec') ? v.toFixed(2) : v.toString();
+        const recAt = new Date(challenge.existingRecordedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+        return (
+          <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden">
+              {/* Header */}
+              <div className="bg-amber-500 px-6 py-4 flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                  <span className="text-white font-black text-sm">!</span>
+                </div>
+                <div>
+                  <p className="font-black text-white text-sm uppercase tracking-wider">Duplicate Record Detected</p>
+                  <p className="text-amber-100 text-xs">Same athlete · same drill · within 2 minutes</p>
+                </div>
+              </div>
+
+              {/* Comparison */}
+              <div className="px-6 py-5 space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-zinc-100 rounded-2xl p-4 text-center">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 mb-1">Existing Record</p>
+                    <p className="font-mono font-black text-2xl tabular-nums text-zinc-900">{fmtVal(challenge.existingValue)}<span className="text-xs font-bold text-zinc-400 ml-1">{unit}</span></p>
+                    <p className="text-[10px] text-zinc-400 mt-1">Attempt {challenge.existingAttemptNum} · {recAt}</p>
+                  </div>
+                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-amber-500 mb-1">New Reading</p>
+                    <p className="font-mono font-black text-2xl tabular-nums text-zinc-900">{fmtVal(challenge.newValue)}<span className="text-xs font-bold text-zinc-400 ml-1">{unit}</span></p>
+                    <p className="text-[10px] text-zinc-400 mt-1">{label} · pending</p>
+                  </div>
+                </div>
+
+                <p className="text-xs text-zinc-500 text-center">
+                  Delta: <span className="font-mono font-bold text-zinc-700">{Math.abs(challenge.newValue - challenge.existingValue).toFixed(2)}{unit}</span>
+                  {' '}({((Math.abs(challenge.newValue - challenge.existingValue) / challenge.existingValue) * 100).toFixed(1)}%)
+                </p>
+              </div>
+
+              {/* Actions */}
+              <div className="px-6 pb-6 space-y-2">
+                <button
+                  onClick={() => resolveDuplicateChallenge(challenge.itemId, 'keep_both')}
+                  className="w-full py-3 bg-zinc-900 text-white rounded-2xl font-bold text-sm hover:bg-zinc-700 transition-colors"
+                >
+                  Keep Both — Save as Attempt {challenge.existingAttemptNum + 1}
+                </button>
+                <button
+                  onClick={() => resolveDuplicateChallenge(challenge.itemId, 'replace')}
+                  className="w-full py-3 bg-white border border-zinc-200 text-zinc-900 rounded-2xl font-bold text-sm hover:bg-zinc-50 transition-colors"
+                >
+                  Replace Existing with New Reading
+                </button>
+                <button
+                  onClick={() => resolveDuplicateChallenge(challenge.itemId, 'discard')}
+                  className="w-full py-3 text-zinc-400 rounded-2xl font-bold text-sm hover:text-zinc-700 transition-colors"
+                >
+                  Discard New Reading
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+      {/* ─────────────────────────────────────────────────────────────── */}
     </div>
   );
 }
