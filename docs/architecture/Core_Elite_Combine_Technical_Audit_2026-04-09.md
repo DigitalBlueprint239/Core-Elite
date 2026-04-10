@@ -654,6 +654,6 @@ Future Sprint — PowerSync Service
 
 ---
 
-*Code baseline: commit `57d26e8` — `feat: production sprint — B2B portal, compliance layer, ops hardening` — represents the final state of all five execution phases. This audit document was added in a subsequent documentation commit; see `git log --oneline docs/architecture/Core_Elite_Combine_Technical_Audit_2026-04-09.md` for the docs commit hash.*
+*Code baseline: commit `57d26e8` — `feat: production sprint — B2B portal, compliance layer, ops hardening` — represents the final state of all five execution phases. This audit document and companion architecture files were added in documentation commit `3ea06cd` — `docs: architecture audit snapshot — 2026-04-09`.*
 
 *Repository: `https://github.com/DigitalBlueprint239/Core-Elite.git` | Branch: `main`*
