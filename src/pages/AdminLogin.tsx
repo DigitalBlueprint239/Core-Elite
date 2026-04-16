@@ -25,6 +25,21 @@ export default function AdminLogin() {
     }
 
     if (user) {
+      // ── Role resolution: JWT claims first, profiles table as fallback ──
+      // app_metadata.role is set server-side (invite-staff Edge Function /
+      // sync-metadata) and is always authoritative. Checking it first avoids
+      // a DB round-trip AND eliminates the window where a profiles RLS/timing
+      // issue could deny a legitimately authenticated admin.
+      const jwtRole =
+        (user.app_metadata?.role as string | undefined) ??
+        (user.user_metadata?.role as string | undefined);
+
+      if (jwtRole === 'admin') {
+        navigate('/admin/dashboard');
+        return;
+      }
+
+      // Fallback: profiles table (catches accounts without synced JWT claims)
       const { data: profile } = await supabase
         .from('profiles')
         .select('role')

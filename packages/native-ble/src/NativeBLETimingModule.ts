@@ -68,6 +68,56 @@ export type ScanErrorEvent = {
 };
 
 // ---------------------------------------------------------------------------
+// Phase 2 event payloads
+// ---------------------------------------------------------------------------
+
+/** Emitted every ~1s per connected peripheral. */
+export type RSSIUpdateEvent = {
+  address: string;
+  rssi: number;
+  smoothedRssi: number;
+};
+
+/**
+ * RF adaptation state values mirror the C++ / Kotlin enum:
+ *   Normal → Degrading → PHYDowngrading → PHYCoded → CriticalSignal → FallbackActive
+ */
+export type RFAdaptationState =
+  | 'Normal'
+  | 'Degrading'
+  | 'PHYDowngrading'
+  | 'PHYCoded'
+  | 'CriticalSignal'
+  | 'FallbackActive';
+
+export type RFAdaptationEvent = {
+  address: string;
+  state: RFAdaptationState;
+  /** Only present on PHY transitions. */
+  phy?: '1m' | '2m' | 'coded_125k';
+};
+
+/** Emitted when a successful clock sync exchange completes. */
+export type ClockSyncUpdateEvent = {
+  /** master_minus_slave offset in nanoseconds, as string (uint64 precision). */
+  offsetNs: string;
+  /** Round-trip time in nanoseconds, as string. */
+  rttNs?: string;
+  sampleCount: number;
+  isSynced: boolean;
+};
+
+export type SignalDegradedEvent = {
+  address: string;
+  rssi: number;
+};
+
+export type FallbackRequiredEvent = {
+  address: string;
+  reason: 'signal_critical' | 'clock_desync' | string;
+};
+
+// ---------------------------------------------------------------------------
 // TurboModule spec
 // All methods must be present in both native implementations.
 // ---------------------------------------------------------------------------
@@ -95,6 +145,30 @@ export interface Spec extends TurboModule {
    * Useful for testing and for draining the buffer on app resume.
    */
   flushBuffer(): void;
+
+  // ---------------------------------------------------------------------------
+  // Phase 2 methods
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Start advertising the CoreElite Sync GATT service so peer station devices
+   * can connect and perform two-way clock synchronisation.
+   * nodeId: this device's string identifier (lowest wins master election).
+   */
+  startSyncService(nodeId: string): void;
+
+  /** Stop advertising the sync service and close the GATT server. */
+  stopSyncService(): void;
+
+  /** Force an immediate clock sync ping to all connected sync peers. */
+  triggerClockSync(): void;
+
+  /**
+   * Reset fallback state and re-enable BLE timing.
+   * Call only after operator confirms signal quality is acceptable.
+   * Emits "onFallbackCleared" on completion.
+   */
+  resetFallback(): void;
 
   // Required by RCTEventEmitter / New Architecture event system.
   addListener(eventName: string): void;

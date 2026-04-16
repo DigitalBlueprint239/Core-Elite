@@ -203,29 +203,46 @@ export default function StationMode() {
     const deviceLabel = getDeviceId();
     
     async function sendHeartbeat() {
-      const payload = {
-        event_id: station.event_id,
-        station_id: station.id,
-        device_label: deviceLabel,
-        last_seen_at: new Date().toISOString(),
-        is_online: navigator.onLine,
+      // Generate HLC once for this heartbeat event, used on both the online
+      // and offline paths. This ensures every write — regardless of network
+      // state — carries the same deterministic write-order timestamp, so
+      // upsert_device_status_hlc() can reject stale offline heartbeats that
+      // arrive after a fresher online write (migration 017, v2 §3.1.2).
+      const hlcTimestamp = tick();
+
+      const basePayload = {
+        event_id:           station.event_id,
+        station_id:         station.id,
+        device_label:       deviceLabel,
+        last_seen_at:       new Date().toISOString(),
+        is_online:          navigator.onLine,
         pending_queue_count: pendingCount,
-        last_sync_at: lastSyncTime?.toISOString() || null
+        last_sync_at:       lastSyncTime?.toISOString() || null,
       };
 
       if (navigator.onLine) {
-        await supabase.from('device_status').upsert(payload);
+        // Online path: call the HLC-guarded RPC directly.
+        // This prevents a stale queued heartbeat from later overwriting
+        // a fresher online write (the RPC enforces strict HLC > current).
+        await supabase.rpc('upsert_device_status_hlc', {
+          p_event_id:      basePayload.event_id,
+          p_station_id:    basePayload.station_id,
+          p_device_label:  basePayload.device_label,
+          p_last_seen_at:  basePayload.last_seen_at,
+          p_is_online:     basePayload.is_online,
+          p_pending_count: basePayload.pending_queue_count,
+          p_last_sync_at:  basePayload.last_sync_at ?? null,
+          p_hlc_timestamp: hlcTimestamp,
+        });
       } else {
-        // Queue heartbeat for later if offline.
-        // Generate HLC once and pass explicitly so addToOutbox does not
-        // burn a second tick() call internally.
-        const hlcTimestamp = tick();
+        // Offline path: queue for later sync. The outbox carries hlc_timestamp
+        // so useOfflineSync calls upsert_device_status_hlc when it drains.
         await addToOutbox({
-          id: `heartbeat-${Date.now()}`,
-          type: 'device_status',
-          payload,
-          timestamp: Date.now(),
-          attempts: 0,
+          id:            `heartbeat-${hlcTimestamp}`,
+          type:          'device_status',
+          payload:       basePayload,
+          timestamp:     Date.now(),   // elapsed-time only, not conflict resolution
+          attempts:      0,
           hlc_timestamp: hlcTimestamp,
         });
       }

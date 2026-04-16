@@ -20,9 +20,23 @@ import type {
   DeviceConnectionEvent,
   DeviceDisconnectionEvent,
   ScanErrorEvent,
+  RFAdaptationState,
+  RSSIUpdateEvent,
+  RFAdaptationEvent,
+  ClockSyncUpdateEvent,
+  SignalDegradedEvent,
+  FallbackRequiredEvent,
 } from './NativeBLETimingModule';
 
 export type { NativeTimingEvent };
+export type {
+  RFAdaptationState,
+  RSSIUpdateEvent,
+  RFAdaptationEvent,
+  ClockSyncUpdateEvent,
+  SignalDegradedEvent,
+  FallbackRequiredEvent,
+};
 
 // ---------------------------------------------------------------------------
 // Decoded TimingResult
@@ -136,10 +150,19 @@ function validateTime(seconds: number): ValidationResult {
   return { valid: true };
 }
 
+// Session counter — incremented once per TimingResult to guarantee uniqueness
+// within this JS process lifetime. Combined with a random suffix to prevent
+// collisions across app restarts if the counter is ever reset.
+// Date.now() is intentionally NOT used here — this ID is for application-layer
+// deduplication only and must not carry any timing semantics.
+let _idCounter = 0;
+
 function generateId(): string {
-  // Simple monotonic counter + random suffix for session-unique IDs.
-  // Replaced by UUIDv4 when the RN app has a UUID library available.
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  _idCounter += 1;
+  // 6 random hex chars give 16^6 = 16,777,216 combinations per counter value.
+  // Collision probability at combine scale (< 1,000 events) is negligible.
+  const rand = Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0');
+  return `ce_${_idCounter}_${rand}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -187,9 +210,15 @@ class BLETimingService {
    * Call in componentWillUnmount / useEffect cleanup.
    */
   removeAllListeners(): void {
+    // Capture count BEFORE clearing — this.subscriptions.length is 0 after the
+    // array is reassigned, so the native module would receive removeListeners(0)
+    // if the count is read after the clear.
+    const count = this.subscriptions.length;
     this.subscriptions.forEach(sub => sub.remove());
     this.subscriptions = [];
-    NativeBLETimingModule.removeListeners(this.subscriptions.length);
+    if (count > 0) {
+      NativeBLETimingModule.removeListeners(count);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -268,6 +297,26 @@ class BLETimingService {
     NativeBLETimingModule.addListener('onScanError');
     return () => { sub.remove(); NativeBLETimingModule.removeListeners(1); };
   }
+
+  // ---------------------------------------------------------------------------
+  // Phase 2: Sync service lifecycle
+  // ---------------------------------------------------------------------------
+
+  startSyncService(nodeId: string): void {
+    NativeBLETimingModule.startSyncService(nodeId);
+  }
+
+  stopSyncService(): void {
+    NativeBLETimingModule.stopSyncService();
+  }
+
+  triggerClockSync(): void {
+    NativeBLETimingModule.triggerClockSync();
+  }
+
+  resetFallback(): void {
+    NativeBLETimingModule.resetFallback();
+  }
 }
 
 // Singleton — one BLE manager per process (mirrors CBCentralManager constraint)
@@ -276,3 +325,22 @@ export const bleTimingService = new BLETimingService();
 // Re-export raw module for advanced / testing use
 export { NativeBLETimingModule };
 export type { NativeTimingEvent as RawNativeTimingEvent };
+
+// WatermelonDB write hook — the final stage of the timing pipeline
+export { useBLETiming } from './useBLETiming';
+export type {
+  UseBLETimingOptions,
+  UseBLETimingReturn,
+  TimingOutboxRecord,
+  OutboxWriteFn,
+  HLCTickFn,
+  BLEConnectionState,
+} from './useBLETiming';
+
+// Phase 2: RF adaptation state + clock sync
+export { useRFAdaptation } from './useRFAdaptation';
+export type {
+  ClockSyncInfo,
+  PerDeviceRFState,
+  UseRFAdaptationReturn,
+} from './useRFAdaptation';

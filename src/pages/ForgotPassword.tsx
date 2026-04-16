@@ -24,7 +24,10 @@ export default function ForgotPassword() {
     setError(null);
 
     const { error: resetError } = await supabase.auth.resetPasswordForEmail(addr, {
-      redirectTo: `${window.location.origin}/auth/reset-password`,
+      // Route through the central PKCE callback handler, which exchanges the
+      // code and forwards to /update-password. Using window.location.origin
+      // makes this environment-aware: localhost in dev, production in prod.
+      redirectTo: `${window.location.origin}/auth/callback`,
     });
 
     setLoading(false);

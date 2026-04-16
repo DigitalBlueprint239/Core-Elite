@@ -1,0 +1,322 @@
+Core Elite Combine App—"God-Tier"Execution Framework
+Principal SystemsArchitectAssessment|Cross-CorpusForensic Audit
+Classification:Internal Engineering—DoNotDistribute
+Author:L8SystemsArchitecture Review
+Date:April2026
+CorpusVersionsAnalyzed:v1(Hardware/BLE/Offline),v2(Biomechanics/CRDT Math/SQLite
+Locks),v3(RF Physics/C++Memory/Byzantine SQLite)
+Section0:PreliminaryCross-CorpusVulnerabilityAssessment
+The RF-to-SQLite Collision Point
+The directive asked:Where doesthephysical datarateof athlete movement(Hz)outpacethe
+database'swrite latency?
+Here isthe exactmath,derived fromspecific corpusvalues—nospeculation.
+Athlete movementdatarate(fromv3§1.1–1.2):
+The FreelapFxChiptransmitstiming data asasingle BLE notification burstatthe FINISH
+crossingonly(v1§1.2.2).ItisNOTstreaming continuoustelemetry.The BLE connection interval
+minimum is15mson iOS(v2§1.2).Asingletimingpacketis~30–50bytes,transmitted inone
+notification eventatone CI duration=15msfromfinish crossingtoappdelivery(v2§1.1.3
+worked example).
+Ata large combinewith100+athletes,theworst-casescenarioisNOT continuousstreaming—it
+isburstconcurrency.Considerapro-agilityshuttlestationrunning4athletesperminute across
+3stations:that's12finish events/minute=0.2Hzperstation.Even atsaturation,the BLE data
+rate istriviallylowforasingle device.
+The actual collisionpointisonthe SQLitewriteside duringsync.
+SQLitewrite latency(fromv3§3.2):
+NANDflashwritetime:505μsper4KBpage(v3§3.2.1,Samsung K9F8G08U0M
+datasheet)
+With default4KB SQLitepageson8KB NAND:write amplification≥2.0×(v3§3.2.1)
+Effectivewrite latencyperpage:~1.01ms
+100,000rowbulk insert:4,883pagesmodified→checkpointI/O alone=2.46seconds(v3
+§3.2.2)
+
+--- PAGE 1 END ---
+
+WAL modesequential append:WA≈1.1×—nearoptimal duringwrite,butcheckpointis
+deferredrandom I/O
+The critical collision:ItisNOTreal-time data capturethatbreaks.Itisthethree-device
+concurrentsyncreconnect(v1§3.6.1).When3tabletsreconnectsimultaneouslyafter2hours
+offlinewith87+34+12=133recordseachpushingtotheserver,andtheserverisSQLite-
+backed:
+ServerSQLite in WAL modeprocesseswritessequentially(onewriteratatimeperWAL
+rule—v2§3.3.4)
+Device A's87rowsin asingleBEGIN IMMEDIATE TRANSACTION:~87×200bytes=17.4KB→
+~5NANDpages→2.5mswritetime
+Device B's34rowsarrive1mslater→blocked byDevice A'slock→SQLITE_BUSYif busy
+timeoutnotconfigured(v2§3.3.4,v3§3.2.2)
+With WAL,Device B'spullreadsare NOT blocked—thisisfine
+Butthepushwritesqueueserially
+Verdict:Atcombinescale(133rowsacross3devices),thisisa non-issue—totalserver-sidewrite
+time is~10ms.The corpus-documentedvulnerabilityonlymanifestsat10,000+rowsyncs(e.g.,
+historicalseason data importduringfirstlogin),wherethe2.46-second checkpointI/O and
+_unsafeBatchPerCollectionOOM concern(v3§2.3)becomereal.Thereal-time athlete
+movementrate(0.2Hzeffective)neveroutpacesthe database.The dangerousscenarioisthe
+bulksync,notthe live capture.
+Cross-CorpusContradiction Identified
+v1§3.6.2usesDate.now()forupdated_attimestampsinthe LWWresolution.v2§3.1.3
+introducesHybrid Logical Clocks(HLC)tosolve clockskew.v3§3.1.1formallyprovesthat
+Date.now()collisionsbetweenoffline devicescreatetie-resolution ambiguity.Thev1sync
+implementation isinconsistentwiththev2/v3clock model.Thisisaddressed in Phase2below.
+Phase1:Silicon-to-Software Optimization
+The Problem
+Thestandard ReactNative BLEpipelineruns:
+BLE Radio→CoreBluetooth(nativethread)→JSI Bridge→JS EventLoop→GCpause
+→callback
+
+--- PAGE 2 END ---
+
+v3§1.4.1documentsthe exactfailure:HermesGCpausesblockthe JSthread.BLE
+onValueChangenotificationsfromthe nativethread arequeued inthe JSICallInvokerFIFO.A
+burstof8timing notificationsat15msCI accumulates5–6itemsbeforethethreadresumes.
+TimestampsdeliveredtoJS are clustered at~0msdelta eventhough actual gate crossings
+were100msapart(v3§1.4.2,Mode1).
+CurrentCorpusStatus:CRITICAL FAILURE
+v1§1.3.3(the BLEpipeline)usesDate.now()insidethe JS-layerparseTimingPacket()
+function.ThisissubjecttoGC jitter.Thev3corpusexplicitlyflagsthis:"Date.now()and
+performance.now()are JS-layerclockssubjecttoGCscheduling jitter—neverusethem for
+precisiontiming capture."
+God-TierSolution:C++Native Timestamping
+v3§1.4.3providesthe exactproduction implementation.The critical architecture:
+1.Captureclock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)atthe CoreBluetooth delegate
+level—thisisnanosecond-resolution hardwaretimethatdoesnotadjustforNTP and does
+notpause duringsleep(v3§1.4.3)
+2.Non-blocking enqueueintoastd::queue<TimingEvent>protected bystd::mutex—the
+BLEthread nevertouchesJSI(v3§1.4.2,Mode3:callingjsi::Function::call()from a
+non-JSthread causesEXC_BAD_ACCESS)
+3.FlushtoJSviaCallInvoker::invokeAsync()—safe becausethe lambda executesonthe
+JSthread
+Thisbypassesall OSschedulingoverhead betweentheradioandthetimestamp.The C++
+BLETimingBufferclass(v3§1.4.3)isthe correctpattern.Thev1TypeScript-onlypipeline must
+bereplacedwiththisnative module.
+Memoryconstraintfromv3§2.1:The C++native buffermuststaywithinthe iOS Jetsam kill
+threshold.ForiPhone12(4GB RAM),the foreground appkillthreshold is~1.5–1.8GB(v3§2.1).
+TheBLETimingBufferqueue holding1,000timing events×~100byteseach=100KB—
+negligible.The dangerisnotthe bufferbuttheHermesheapduringsync(v3§2.2:observed
+OOM crash atheapSize=910,163,968byteswith1,546GC collectionsbefore crash).
+Additional Optimization:BLE Long Range Fallback
+v3§1.2.3documentsthatinstadium conditionswith5,000WiFi devices,the BLE SINR dropsto
+-26dB—catastrophic.AFHreducesusable channelsfrom37toasfewas8whenthree WiFi APs
+are active(v3§1.2.3).
+God-tierprotocol:Monitorper-channel RSSI.When RSSI dropsbelow-85dBm,transmit
+LL_CONNECTION_UPDATE_INDtoswitchtoLong Range mode(125kbps,-103dBmsensitivity—v3
+
+--- PAGE 3 END ---
+
+§1.1).Thisgains8dBof link budgetatthe costof8×lowerdatarate.Forasingle50-bytetiming
+packet,thisisacceptable(v3§1.2.3).
+Phase2:Deterministic Data Modeling
+The"Byzantine SQLite"Problem—Formal Analysis
+v3§3.1.1formallyprovesthatthree nodes(N=3)cannotachieve Byzantine FaultToleranceper
+Lamport1982:N>3FrequiresN>3forF=1,which isfalse atN=3.
+However,v3§3.1.1alsocorrectlyidentifiesthatCore Eliteoperatesunderthecrash faultmodel,
+notthe Byzantine model.Devicesfail bycrashingordisconnecting,notbysending malicious
+conflicting data.Thissimplifieseverything.
+CurrentSchema Status:CRITICAL FAILURE—Clock Model
+Thev1schemausesupdated_at:number(UnixmsfromDate.now()).Thev2corpus
+introducesHLCwith(pt,l,nodeId)tuples.Thev3corpusprovesthatDate.now()
+collisionsbetweenoffline devicesare inevitable(same millisecondwriteson differenttablets).
+Thev1schema mustbeupgraded:
+timing_results.updated_at:number→timing_results.hlc_timestamp:string
+The HLCstring formatfromv3§3.1.2:{ptpaddedto16digits}_{lpaddedto10
+digits}_{nodeId}—sortableviastandard B-Tree index,deterministictotalorder,no
+coordinatorrequired.
+God-TierSchema Additions
+Beyondthev1WatermelonDBschema(v1§3.3),the following arerequired for100+athlete high-
+frequencyoperation:
+1.Replaceupdated_atwith HLC acrossalltables.The HLC implementation fromv2§3.1.3
+providesthe TypeScriptclass.Thetotalordercomparatorfromv3§3.1.2mustbeused forALL
+conflictresolution.
+2.Add composite covering indexesatthe SQLite layer.v2§3.3.3providesthe exactSQL:
+idx_results_athlete_event—mostcommonquery:allresultsforan athlete in an event
+idx_results_updated_at—sync deltaquery
+idx_results_pending_validation—partial indexonunvalidatedresults
+idx_athletes_event_deleted—check-inflow
+
+--- PAGE 4 END ---
+
+idx_outbox_pending—partial indexonsyncoutbox
+Withoutthese,eachreactive WatermelonDBquerytriggersafulltablescanduringsync,
+blockingthe UIthread even in JSI mode(v2§3.3.3).
+3.SetSQLitepagesizeto8192bytes.v3§3.2.3documentsthe2:1write amplification mismatch
+between default4KB SQLitepagesand modern8KB NAND.Estimated100K-rowinsert
+improvement:~8.2s→~4.1s(v3§3.2.3table).
+4.Configure WAL aggressively:
+sql
+PRAGMApage_size=8192;--Match NANDpagesize(v3§3.2.3)
+PRAGMA journal_mode=WAL;--Sequential append,readersneverblocked(v3§3.
+PRAGMAwal_autocheckpoint=200;--Checkpointat200pages=1.6MB WAL(v3§3.2.3)
+PRAGMA cache_size=-131072;--128MBpage cache(v3§3.2.3)
+Afterlargesyncs,force:PRAGMAwal_checkpoint(TRUNCATE)—thischeckpointsANDtruncates
+the WALtozero(v3§3.2.2).The failure modewithoutthis:WAL growsunboundedlywhen
+readersholdopentransactions,andreadperformance degradesproportionallytoWALsize.
+5.Immutabletimingrecords.v1§3.6.4correctlyidentifiesthis:eachrepisaseparaterecord
+with a monotonicallyincreasingattempt_number.Twoscoutsrecordingthesame athletewrite
+NEWrecords,notupdatingthesamerecord.Thiseliminatesthe majorityof LWW conflicts.Do
+notmerge.Donotdeduplicate atthe DB layer.Bestresultiscomputed atquerytime.
+6.Add-biased LWW.v2§3.1.2:whenmax_t(add)=max_t(remove),preservetherecord.Never
+silentlydelete atimingresult.
+Data IntegrityUnder100+Athletes
+Thesync mutexfromv1§3.5(syncLockpromise)preventsduplicate concurrentsync callsfrom
+thesame device.Ontheserver,v2§3.3.4specifiesBEGIN IMMEDIATE TRANSACTIONtoacquire
+thewrite lockupfront,preventingSQLITE_BUSYerrorswhen multiple devicepushesarrive
+withinthesame millisecond.
+For100+athletesacross3tabletsgenerating~400recordsperhour(conservative),thetotalsync
+payloadperreconnectcycle is~80KBof JSON—well belowthe OOMthreshold.The
+_unsafeBatchPerCollection:trueflag(v2§3.3.2,v3§2.3)isonlyneeded for10,000+row
+syncs.Atcombinescale,standardsynchronize()issufficient.
+
+--- PAGE 5 END ---
+
+Phase3:The"Scout'sIntuition"Engine—Biomechanical EfficiencyScore
+WhatCatapultand Zebra CannotDo
+Catapultand Zebra are GPS/IMU-basedsystemsthattrackplayermovementat10–15Hz.They
+measure distance,velocity,acceleration load.WhattheydoNOTprovide:
+1.Percentilescoring againstpeer-reviewed,position-specific,grade-level normative data
+—thev2corpusembedsGillen etal.2019(n=7,214,PMC6355118)and McKayetal.2020
+(n=7,478,PMID30418328)with exactmeansandstandard deviationsbyposition and class
+2.Biomechanical disparitydetection—comparing an athlete's10-yardsplitpercentile
+againsttheirvertical jumppercentiletoidentifyaccelerationtechnique deficiencyvs.raw
+powerdeficiency
+3.Physics-grounded falsestartdetectionatthe120msauditoryreactiontimefloor(Pain&
+Hibbs2007,PMID17127583)
+The Biomechanical EfficiencyScore(BES)—Specification
+Component1:Z-Score Percentile Engine(v2§2.1.3)
+Usingthe Abramowitz&Stegun normal CDF approximation(maxerror±7.5×10⁻⁸):
+Fortime-based metrics:Z=(μ-X)/σ(inverted:faster→positive Z→higherpercentile)
+Fordistance-based metrics:Z=(X-μ)/σ(normal:higher→positive Z→higherpercentile)
+Aggregate normsfrom Gillen etal.2019(v2§2.1.1):
+Metricμσn
+40-yd dash5.3s0.4s7,077
+10-yd dash1.9s0.2s6,975
+Proagility4.6s0.3s7,055
+Vertical jump25.2in4.3in7,031
+Broad jump96.9in10.6in7,066
+Component2:Mechanical DisparityDetection(v2§2.3.1)
+From Morin etal.2015(Frontiersin Physiology),sprintaccelerationperformance isdetermined
+bytheratioof horizontaltototal GRF(Rₑ).Elitesprinters:Rₑ≈0.40–0.50.Non-elite:Rₑ≈0.25–
+0.35.
+
+--- PAGE 6 END ---
+
+Theproxyavailable ata combine(noforceplates):compare10-yardsplitpercentilevs.vertical
+jumppercentile.A>20percentilepointgap(v2§2.3.1detectMechanicalDisparity())flags:
+"Mechanical disparitydetected—accelerationtechnique mayneed improvement.Vertical
+power(Xthpercentile)significantlyexceedssprintacceleration(Ythpercentile),suggesting
+suboptimal horizontal force application inthefirst3–5steps."
+Thisisintelligence notimingsystem alone canprovide.Ittransformsrawnumbersintoa
+coaching insightgrounded inpeer-reviewed biomechanics.
+Component3:Phase-Based40-Yard Decomposition(v2§2.3.2)
+Usingthe Brown/Vescovi/VanHeestthree-phase model:
+PhaseDistanceWhatItTests
+Initial Acceleration0–10yardsGRForientation,first-stepmechanics
+Middle Acceleration10–20yardsTransitiontoupright,frequencystabilization
+Metabolic-Stiffness20–40yardsContacttimereduction,legstiffness
+Ifthe athlete hasa10-yardsplitbuta disproportionatelyslow20-to-40segment,the engineflags:
+"Metabolic-stiffnessphaseweakness:athlete'stop-endspeed isconstrained byground
+contacttime.Atmaxvelocity,neuromuscularRFD limitsforceproductionwithinthe~100ms
+contactwindow(v2§2.3.2).Recommendreactivestrengthtraining."
+Component4:Validation Gating(v2§2.2.4)
+Everyresultpassesthroughthe four-gatevalidationpipeline beforescoring:
+1.Falsestartgate:reactiontime<120ms=FLAG(Pain&Hibbs2007floor)
+2.Sensorfire gate:time belowabsolute biomechanicalfloor(40-yd<3.70simpossible)
+3.Sensormalfunction gate:time above maximumvalidthreshold(40-yd>9.00s)
+4.Extraordinaryresultgate:belowworld-recordfloor(40-yd<4.21s=manualreview)
+The Composite BES Score
+BES=weighted_average(
+Z_percentile(40yd,position,grade),//weight:0.30
+Z_percentile(10yd,position,grade),//weight:0.25
+Z_percentile(vertical,position,grade),//weight:0.20
+Z_percentile(pro_agility,position,grade),//weight:0.15
+disparity_penalty(10yd_pct,vert_pct),//weight:0.10(negative if gap>20
+
+--- PAGE 7 END ---
+
+pctpoints)
+)
+Theposition×grade lookuptable from McKayetal.2020(v2§2.1.2)enablesposition-adjusted
+scoring:an OLrunning5.06sis50thpercentile fortheirposition butwould be10thpercentile for
+a WR.The BES accountsforthis.
+Phase4:Operational Redundancy—"Fail-Soft"Protocol
+Failure Scenariosand Corpus-Documented Mitigations
+Scenario1:BLE connection dropsmid-event
+v1§1.3.5providesthe exactreconnectpattern:exponential backoffwith
+MAX_RECONNECT_ATTEMPTS=5,RECONNECT_DELAY_MS=2000.After5failures,fall backto
+manual entrymode.The FreelapFxChipretainsthe lasttime in memoryfor30minutesafterthe
+appbecomesunreachable(v1§1.2.2).Recovery:place chipneardevice,open app,shake chip.
+Critical gap:Dashrofflinerecoverybehaviorisunknown(v1AppendixA).Thisisflagged asa
+Known Unknown.Mitigation:implementmanual entryastheprimaryfallback forDashr,always.
+Scenario2:Tablethardware failure during live combine
+Theoutboxpattern(v1§3.6.5)guaranteesdelivery.EverytimingresultiswrittentoBOTHthe
+primarytable(forimmediate local display)ANDthesync_outboxtable(forguaranteedserver
+delivery).Ifthe appcrashesbetween localwrite andsync,theoutboxsurvivesin SQLiteon disk.
+Onrelaunch,processOutbox()drainspendingoperations.
+Theoutboxretrylimit:retry_count<5(v1§3.6.5).After5failedsync attempts,therecord
+remainsintheoutboxbutstopsretrying.A manual"Force Sync"buttonshould drainthese.
+Scenario3:Complete Wi-Fioutage forthe entire event
+Allthreetabletsoperate fullyoffline.Data isstored locallyin WatermelonDB/SQLite.Eachtablet
+independentlyrecords,validates(logic checksrun client-side),and displaysresults.When Wi-Fi
+isrestored—even dayslater—thethree-devicereconnectprotocol fromv1§3.6.3reconcilesall
+changesets.Eachrepisan immutablerecord,sothere are noconflictsfordifferentathletes.
+Same-athlete conflictsresolvevia HLC(v3§3.1.2).
+Scenario4:Quartzoscillatorthermal driftcorruptstiming
+v3§1.3provesthatat50°C crystaltemperature(Floridafield,directsun),asingle
+uncompensated AT-cutoscillatordrifts360msover4hours.However,because Freelapand
+Dashrusedifferentialtiming(startgatetriggerscounter,finish gatestopssame counter),the
+per-run driftisonly~0.12ms—withintolerance(v3§1.3.4).
+
+--- PAGE 8 END ---
+
+The danger:multi-gate meshscenariosusing absolutetimestampsforinter-device
+synchronization.The masterlessNTP-style clocksyncprotocol(v3§1.3.4)shouldrun every30–
+60secondsvia BLE beaconping,capping inter-device errorat±0.72–1.44ms.
+Scenario5:OOM crash during largesync
+v3§2.3documentsthe exactcrash:125MB APIresponse causesjava.lang.OutOfMemoryError
+at262MB allocation.The JSONparserallocatesboththe inputstring andparsedobjectgraph
+simultaneously(~2×rawJSONsize in memory).
+Mitigationsfrom corpus:
+Firstsync:useunsafeTurbo:truetopassrawtexttoC++simdjson(1.1×memoryvs.
+2.0×)—v3§2.3
+_unsafeBatchPerCollection:truefor>10Krowsyncs—splitsthetransaction intoper-
+collection chunks(v2§3.3.2,v3§2.3)
+Streaming fetchviares.text()insteadofres.json()forturbopath(v3§2.3)
+Usefetch(),notaxios.get()—axiosbuffersthe entireresponse beforeparsing(v3
+§2.3)
+Technical DebtAudit:The Three MostDangerousAssumptions
+DangerousAssumption#1:Date.now()IsSufficientforConflictResolution
+Location:v1§3.5syncEngine.ts,v1§3.6.2handlePush()
+Risk Level:HIGH—data corruptionunderreal conditions
+v1usesDate.now()forupdated_attimestampsthroughoutthesyncsystem.v2§3.1.3andv3
+§3.1.1–3.1.2explicitlyprovethisisinsufficient:offlinetabletshave noNTP,clockskewisreal,and
+Date.now()collisionswithinthesame millisecond are inevitableunderload.The HLC
+implementation existsinv2§3.1.3butisNOT integrated intothev1schemaorsync engine.If
+shipped as-is,thefirstthree-deviceofflinereconnectatareal combinewillproduce non-
+deterministic conflictresolution,wherethe"winning"record dependsonwhich device'spush
+reachestheserverfirst—notonwhichwritewasobjectivelylater.
+DangerousAssumption#2:BLE Timing PacketsCan Be ReliablyTimestamped in JavaScript
+Location:v1§1.3.3parseTimingPacket()usesDate.now()atthe JS layer
+Risk Level:HIGH—timing accuracydegradationunderGCpressure
+v3§1.4.1–1.4.3providesextensive documentationthatHermesGCpausescause BLE notification
+callbackstoarrive in clustered batcheswith~0msdelta betweenthem,evenwhen actual gate
+crossingswere100msapart.The C++nativetimestampingpattern(v3§1.4.3)with
+
+--- PAGE 9 END ---
+
+clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)existsbutisNOTreferenced inthev1BLE
+pipeline.Ifthev1TypeScript-onlypipeline isused inproduction,timingresultswill be
+corrupted during anyGCpause coincidingwith a notification burst.Thisisespecially
+dangerousduringtherapid-firepro-agilitydrillwheresplittimesareseparated by~1.5seconds
+and multiple athletesmayfinish inquicksuccession.
+DangerousAssumption#3:DefaultSQLite Configuration IsAcceptable
+Location:v1§3.3WatermelonDBschema(noPRAGMAtuning mentioned)
+Risk Level:MEDIUM—performance degradation,notdata loss
+v1usesWatermelonDBwith defaultSQLitesettings:4KBpagesize,defaultcache,defaultWAL
+autocheckpoint.v3§3.2.3documentsthatthiscreatesa2:1write amplificationpenaltyagainst
+modern8KB NAND,andv3§3.2.2documentsthatunbounded WAL growth during long-running
+readtransactionsdegradesreadperformanceproportionally.Thev2§3.3.3composite indexes
+are alsoabsentfromthev1schema definition.On a4-hourcombine daywith100+athletes,the
+cumulative effectissluggish UI,delayedsync,andpotential WAL-relatedread latency—notdata
+loss,butauserexperiencethatfallswell below"God-tier."
+Endof Framework.Allreferenced metricsaretraceabletospecific corpussectionsandtheircited
+primarysources.Novalueswere fabricated.
+
+--- PAGE 10 END ---
+

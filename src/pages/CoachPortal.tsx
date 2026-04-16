@@ -33,6 +33,7 @@ import {
 import { DRILL_CATALOG } from '../constants';
 import { calculatePercentile, gradeFromPercentile, gradeColor } from '../lib/analytics';
 import { generateArmsCSV, downloadCSV, buildExportFilename, type ExportableAthlete } from '../lib/b2b-exports';
+import VerifiedExportButton from '../components/admin/VerifiedExportButton';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -797,6 +798,11 @@ export default function CoachPortal() {
                               attempts={athlete.results.filter(
                                 r => r.drill_type === 'forty'
                               )}
+                            />
+                            <VerifiedExportButton
+                              athleteId={athlete.id}
+                              athleteName={`${athlete.first_name} ${athlete.last_name}`}
+                              compact
                             />
                           </div>
                         </td>

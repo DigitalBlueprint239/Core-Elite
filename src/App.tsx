@@ -23,7 +23,9 @@ const AdminOps = lazy(() => import('./pages/AdminOps'));
 const AdminDiagnostics = lazy(() => import('./pages/AdminDiagnostics'));
 const ParentPortal = lazy(() => import('./pages/ParentPortal'));
 const CoachPortal = lazy(() => import('./pages/CoachPortal'));
-const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const ForgotPassword   = lazy(() => import('./pages/ForgotPassword'));
+const UpdatePassword   = lazy(() => import('./pages/UpdatePassword'));
+const AuthCallback     = lazy(() => import('./pages/auth/AuthCallback'));
 const Lookup = lazy(() => import('./pages/Lookup'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 
@@ -39,6 +41,8 @@ const EventHub               = lazy(() => import('./pages/league-admin/EventHub'
 const StaffAccessManagement  = lazy(() => import('./pages/league-admin/StaffAccessManagement'));
 const ComplianceAuditViewer  = lazy(() => import('./pages/league-admin/ComplianceAuditViewer'));
 const B2BExports             = lazy(() => import('./pages/league-admin/B2BExports'));
+const LiveCommandCenter      = lazy(() => import('./pages/league-admin/LiveCommandCenter'));
+const VendorImport           = lazy(() => import('./pages/league-admin/VendorImport'));
 
 export default function App() {
   return (
@@ -67,7 +71,10 @@ export default function App() {
                   <StationMode />
                 </RouteGuard>
               } />
-              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/forgot-password"  element={<ForgotPassword />} />
+              <Route path="/update-password" element={<UpdatePassword />} />
+              {/* Central PKCE handler — must be whitelisted in Supabase Dashboard */}
+              <Route path="/auth/callback"   element={<AuthCallback />} />
               <Route path="/admin/login" element={<AdminLogin />} />
               <Route path="/admin/dashboard" element={
                 <RouteGuard requireAdmin>
@@ -114,6 +121,8 @@ export default function App() {
                 <Route path="staff-access" element={<StaffAccessManagement />} />
                 <Route path="compliance" element={<ComplianceAuditViewer />} />
                 <Route path="exports" element={<B2BExports />} />
+                <Route path="command-center" element={<LiveCommandCenter />} />
+                <Route path="import"         element={<VendorImport />} />
               </Route>
 
               <Route path="*" element={<NotFound />} />

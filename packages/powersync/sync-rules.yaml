@@ -1,0 +1,174 @@
+# PowerSync Sync Rules
+#
+# These rules define what data flows FROM Supabase TO each connected device.
+# Each bucket scopes what a device receives based on its authenticated context.
+#
+# Design principles applied here:
+#   1. Devices only receive data for their event — no cross-event leakage
+#   2. Staff devices receive all athletes/results for their event (needed for
+#      duplicate detection and athlete lookup by band number)
+#   3. device_status is shared across all devices in the event (admin dashboard)
+#   4. audit_log is admin-only (separate bucket with role check)
+#   5. HLC columns are always included — they are required for the client-side
+#      conflict resolution logic (update() receive-event rule)
+#
+# Bucket strategy: event-scoped
+#   One bucket per event the authenticated user has access to.
+#   The PowerSync service evaluates these at connection time using the user's
+#   JWT claims (Supabase adds event_id / role to the JWT via a custom hook or
+#   claims table).
+#
+# Reference: https://docs.powersync.com/usage/sync-rules
+
+bucket_definitions:
+
+  # ---------------------------------------------------------------------------
+  # event_data — primary sync bucket for combine staff
+  #
+  # Scoped to: authenticated users with access to the event
+  # Receives:  athletes, bands, stations, results, device_status for the event
+  # ---------------------------------------------------------------------------
+  event_data:
+    parameters:
+      - name: event_id
+        # Read from the user's JWT claims — set by Supabase auth hook.
+        # A staff member is assigned to exactly one event per session.
+        value: token_parameters.event_id
+
+    data:
+      # Athletes — full roster for the event
+      - table: athletes
+        columns:
+          - id
+          - event_id
+          - first_name
+          - last_name
+          - grade
+          - position
+          - band_id
+          - created_at
+        where: event_id = bucket.event_id
+
+      # Bands — assignment status (for lookup by display_number → athlete_id)
+      - table: bands
+        columns:
+          - band_id
+          - event_id
+          - display_number
+          - status
+          - athlete_id
+        where: event_id = bucket.event_id
+
+      # Stations — drill configuration for this event
+      - table: stations
+        columns:
+          - id
+          - event_id
+          - name
+          - drill_type
+          - enabled
+        where: event_id = bucket.event_id
+
+      # Results — all results for this event.
+      # Staff need this for the suspicious-duplicate advisory check UI.
+      # The admin portal needs it for the leaderboard.
+      # hlc_timestamp is included so the client can update() the local HLC
+      # on pull, maintaining causal ordering across devices.
+      - table: results
+        columns:
+          - id
+          - client_result_id
+          - event_id
+          - athlete_id
+          - band_id
+          - station_id
+          - drill_type
+          - value_num
+          - attempt_number
+          - validation_status
+          - hlc_timestamp
+          - recorded_at
+          - meta
+        where: event_id = bucket.event_id
+
+      # Device status — all devices in the event (for admin monitoring)
+      - table: device_status
+        columns:
+          - id
+          - event_id
+          - station_id
+          - device_label
+          - last_seen_at
+          - is_online
+          - pending_queue_count
+          - last_sync_at
+          - hlc_timestamp
+        where: event_id = bucket.event_id
+
+      # Capture telemetry — per-capture diagnostics (migration 018).
+      # Pulled to all staff devices in the event for local duplicate advisory
+      # checks. device_timestamp is the LWW key; included so the client can
+      # perform local LWW reads without a server round-trip.
+      - table: capture_telemetry
+        columns:
+          - id
+          - client_telemetry_id
+          - event_id
+          - result_id
+          - station_id
+          - athlete_id
+          - drill_type
+          - device_timestamp
+          - device_id
+          - device_label
+          - captured_at
+          - capture_duration_ms
+          - ble_rssi
+          - ble_phy
+          - validation_status
+          - was_offline
+          - sync_latency_ms
+          - meta
+        where: event_id = bucket.event_id
+
+  # ---------------------------------------------------------------------------
+  # admin_audit — audit log + result provenance, admin-only
+  #
+  # Scoped to: authenticated users with role = 'admin' for the event
+  # Separate bucket so staff devices don't receive audit data
+  # ---------------------------------------------------------------------------
+  admin_audit:
+    parameters:
+      - name: event_id
+        value: token_parameters.event_id
+      - name: user_role
+        value: token_parameters.role
+
+    data:
+      - table: audit_log
+        columns:
+          - id
+          - event_id
+          - action
+          - entity_type
+          - entity_id
+          - new_value
+          - created_at
+        where: >
+          event_id = bucket.event_id
+          AND bucket.user_role = 'admin'
+
+      # Result provenance — device lineage for each result.
+      # Admin-only: non-sensitive but not required on staff devices.
+      - table: result_provenance
+        columns:
+          - id
+          - result_id
+          - device_id
+          - device_label
+          - station_id
+          - device_timestamp
+          - hlc_timestamp
+          - sync_latency_ms
+          - was_offline
+        where: bucket.user_role = 'admin'

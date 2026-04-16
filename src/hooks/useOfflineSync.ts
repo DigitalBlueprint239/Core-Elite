@@ -129,17 +129,37 @@ export function useOfflineSync() {
             }
           }
         } else if (item.type === 'device_status') {
-          // device_status is a mutable upsert — LWW applies.
-          // deviceStatusShouldUpdate ensures a stale heartbeat from a reconnecting
-          // tablet doesn't overwrite a more recent heartbeat from the same station.
-          // The payload already carries hlc_timestamp in meta; the upsert proceeds
-          // regardless (Supabase's upsert handles the row-level overwrite).
-          const { error } = await supabase.from('device_status').upsert(item.payload);
-          if (!error) {
+          // device_status is a mutable upsert — strict HLC LWW applies.
+          //
+          // We call upsert_device_status_hlc() (migration 017) instead of a
+          // bare .upsert(). The RPC enforces: only write if incoming HLC >
+          // current HLC on the server row (deviceStatusShouldUpdate, v2 §3.1.2).
+          //
+          // This prevents a stale heartbeat queued during an offline period from
+          // overwriting a fresher heartbeat that arrived via the online fast-path.
+          //
+          // applied: false → stale write rejected by HLC guard. Still a success —
+          // the outbox item is removed so it does not retry forever.
+          const p = item.payload;
+          const { data: statusData, error: statusError } = await supabase.rpc(
+            'upsert_device_status_hlc',
+            {
+              p_event_id:      p.event_id,
+              p_station_id:    p.station_id,
+              p_device_label:  p.device_label,
+              p_last_seen_at:  p.last_seen_at,
+              p_is_online:     p.is_online,
+              p_pending_count: p.pending_queue_count ?? 0,
+              p_last_sync_at:  p.last_sync_at ?? null,
+              p_hlc_timestamp: item.hlc_timestamp,
+            },
+          );
+
+          if (!statusError && statusData?.success) {
             if (item.hlc_timestamp) updateHlc(item.hlc_timestamp);
             success = true;
           } else {
-            errorMsg = error.message;
+            errorMsg = statusError?.message ?? statusData?.error ?? 'upsert_device_status_hlc failed';
           }
         } else if (item.type === 'audit_log') {
           // audit_log is an append-only table — insert only, never upsert.
