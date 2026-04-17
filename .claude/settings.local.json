@@ -42,7 +42,10 @@
       "Bash(grep \"K: {}, P: {}\" C:/Projects/Core-Elite/src/lib/scoring/constants.ts)",
       "Bash(grep *)",
       "Bash(git -C C:/Projects/Core-Elite diff --cached --name-only)",
-      "Bash(ls migrations/*.sql)"
+      "Bash(ls migrations/*.sql)",
+      "Read(//c/Projects/Core-Elite/**)",
+      "Bash(ls -la C:/Projects/Core-Elite/dist/assets/AdminDashboard*.js)",
+      "Bash(awk '{print $5, $9}')"
     ]
   }
 }
