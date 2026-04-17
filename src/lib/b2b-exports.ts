@@ -69,13 +69,12 @@ export interface ExportableAthlete {
   first_name:  string;
   last_name:   string;
   position:    string;
-  // Extended fields — present in DB but not yet on AthleteRow client type.
-  // Exported as empty string if absent. A future migration will add these
-  // columns to the athletes table (migration 015).
+  // Extended fields — high_school added via migration 022;
+  // height_in / weight_lb match the DB column names (integer inches / lbs).
   high_school?: string;
   grad_year?:   string | number;
-  height?:      string;  // e.g. "6-2" or "74" (inches)
-  weight?:      string;  // lbs
+  height_in?:   number | string;  // integer inches, e.g. 74
+  weight_lb?:   number | string;  // integer lbs
   // Results — only best result per drill is exported
   bestResults:  Record<string, { value_num: number } | undefined>;
 }
@@ -122,8 +121,8 @@ export function generateArmsCSV(
       'High School': a.high_school  ?? '',
       'Grad Year':   a.grad_year    ?? '',
       'Position':    a.position     ?? '',
-      'Height':      a.height       ?? '',
-      'Weight':      a.weight       ?? '',
+      'Height':      a.height_in    ?? '',
+      'Weight':      a.weight_lb    ?? '',
       '40 Time':     a.bestResults['forty']?.value_num          ?? '',
       '10-Split':    a.bestResults['ten_split']?.value_num       ?? '',
       'Vertical':    a.bestResults['vertical']?.value_num        ?? '',

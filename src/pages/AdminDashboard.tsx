@@ -56,7 +56,7 @@ export default function AdminDashboard() {
       // Fetch athletes for this event
       const { data: athleteRows, error: athErr } = await supabase
         .from('athletes')
-        .select('id, first_name, last_name, position, high_school, grad_year, height, weight')
+        .select('id, first_name, last_name, position, high_school, grad_year, height_in, weight_lb')
         .eq('event_id', event.id);
       if (athErr) throw athErr;
 
@@ -87,8 +87,8 @@ export default function AdminDashboard() {
         position:    a.position ?? '',
         high_school: a.high_school,
         grad_year:   a.grad_year,
-        height:      a.height,
-        weight:      a.weight,
+        height_in:   a.height_in,
+        weight_lb:   a.weight_lb,
         bestResults: bestMap[a.id] ?? {},
       }));
 

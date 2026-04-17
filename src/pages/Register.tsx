@@ -26,6 +26,14 @@ export default function Register() {
     date_of_birth: '',
     grade: '',
     position: '',
+    // Biometrics — collected on Step 1, converted to DB columns before RPC call:
+    //   heightFeet + heightInches → height_in (total integer inches)
+    //   weightLb                  → weight_lb
+    //   highSchool                → high_school
+    heightFeet: '',
+    heightInches: '',
+    weightLb: '',
+    highSchool: '',
     parentName: '',
     parentEmail: '',
     parentPhone: '',
@@ -211,6 +219,21 @@ export default function Register() {
     // HTML injection into stored PII fields.
     const sanitize = (str: string) => str.trim().replace(/[<>]/g, '');
 
+    // ── Biometric conversion ─────────────────────────────────────────────────
+    // Convert the split ft/in UI inputs into a single integer inches value for
+    // the DB column (height_in). Both parts are optional — if neither is filled
+    // in, pass null so the column stays NULL rather than receiving 0.
+    const parsedFeet   = parseInt(formData.heightFeet,   10);
+    const parsedInches = parseInt(formData.heightInches, 10);
+    const hasHeight    = !isNaN(parsedFeet) || !isNaN(parsedInches);
+    const heightIn: number | null = hasHeight
+      ? ((!isNaN(parsedFeet) ? parsedFeet : 0) * 12) +
+         (!isNaN(parsedInches) ? parsedInches : 0) || null
+      : null;
+    const weightLb:   number | null = parseInt(formData.weightLb, 10) || null;
+    const highSchool: string | null = sanitize(formData.highSchool) || null;
+    // ────────────────────────────────────────────────────────────────────────
+
     try {
       const { data, error: rpcError } = await supabase.rpc('register_athlete_secure', {
         p_event_id:                   event.id,
@@ -230,6 +253,9 @@ export default function Register() {
         p_media_release:              formData.mediaRelease,
         p_data_consent:               formData.dataConsent,
         p_marketing_consent:          formData.marketingConsent,
+        p_height_in:                  heightIn,
+        p_weight_lb:                  weightLb,
+        p_high_school:                highSchool,
       });
 
       if (rpcError) throw rpcError;
@@ -440,6 +466,73 @@ export default function Register() {
                 </select>
               </div>
             </div>
+
+            {/* ── Biometrics ───────────────────────────────────────────── */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                  Height <span className="text-zinc-300 font-normal normal-case tracking-normal">(optional)</span>
+                </label>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type="number"
+                      name="heightFeet"
+                      value={formData.heightFeet}
+                      onChange={handleInputChange}
+                      min="3" max="8"
+                      className="w-full p-3 pr-8 bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none"
+                      placeholder="0"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-400 pointer-events-none">ft</span>
+                  </div>
+                  <div className="relative flex-1">
+                    <input
+                      type="number"
+                      name="heightInches"
+                      value={formData.heightInches}
+                      onChange={handleInputChange}
+                      min="0" max="11"
+                      className="w-full p-3 pr-8 bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none"
+                      placeholder="0"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-400 pointer-events-none">in</span>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                  Weight <span className="text-zinc-300 font-normal normal-case tracking-normal">(optional)</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    name="weightLb"
+                    value={formData.weightLb}
+                    onChange={handleInputChange}
+                    min="50" max="450"
+                    className="w-full p-3 pr-12 bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none"
+                    placeholder="0"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-400 pointer-events-none">lbs</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                High School <span className="text-zinc-300 font-normal normal-case tracking-normal">(optional)</span>
+              </label>
+              <input
+                name="highSchool"
+                value={formData.highSchool}
+                onChange={handleInputChange}
+                maxLength={120}
+                className="w-full p-3 bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none"
+                placeholder="School name"
+              />
+            </div>
+            {/* ─────────────────────────────────────────────────────────── */}
 
             <div className="space-y-4 pt-4 border-t border-zinc-100">
               <h3 className="font-bold">Parent/Guardian Information</h3>

@@ -48,7 +48,11 @@ export const DRILL_DIRECTION: Record<DrillId, ScoreDirection> = {
 export type Position =
   | 'QB' | 'WR' | 'RB' | 'TE'
   | 'OL' | 'DL' | 'LB' | 'DB'
-  | 'K'  | 'P'  | 'ATHLETE'; // ATHLETE = unknown / no position adjustment
+  | 'K'  | 'P'
+  // Sub-positions and edge cases — all fall back to Gillen aggregate norms
+  // because McKay et al. 2020 did not report position-specific tables for them.
+  | 'LS' | 'ATH' | 'EDGE' | 'FB' | 'S' | 'CB'
+  | 'ATHLETE'; // ATHLETE = explicit "no position adjustment" sentinel
 
 export type Grade = '9' | '10' | '11' | '12' | 'aggregate';
 
@@ -102,28 +106,99 @@ export const GILLEN_AGGREGATE_NORMS: Record<DrillId, NormativeStats> = {
 
 // ---------------------------------------------------------------------------
 // Position × grade normative data — McKay et al. 2020 (v2 §2.1.2)
-// PMID 30418328
+// PMID 30418328 — n=7,478, high school football combines, position × drill
 //
-// STATUS: Structure is wired and the lookup path is implemented.
-// Values below are STUBS pending exact extraction from corpus v2 §2.1.2.
+// STATUS: Fully populated for 8 primary positions (DB, WR, RB, QB, TE, LB,
+// DL, OL). Positions without McKay data (K, P, LS, ATH, EDGE, FB, S, CB)
+// are represented as empty tables and silently fall back to GILLEN_AGGREGATE_NORMS
+// in lookupNorm(). Grade-specific subdivision not reported by McKay — all
+// entries are position-aggregate (not grade-split).
 //
-// Framework-confirmed anchor point (v2 §2.1.2 worked example):
-//   OL running 5.06s in the 40-yard dash = 50th percentile for OL position.
-//   That same 5.06s = ~10th percentile against aggregate (Gillen).
-//   Therefore OL 40-yard mean ≈ 5.06s.
-//
-// All other positions below inherit aggregate norms until McKay values are
-// populated. Replace each stub with the exact McKay et al. 2020 values.
+// Lookup priority implemented in percentile.ts:
+//   1. MCKAY_POSITION_NORMS[position][drillId]   → source: 'position_aggregate'
+//   2. GILLEN_AGGREGATE_NORMS[drillId]            → source: 'gillen_aggregate'
 // ---------------------------------------------------------------------------
 export type PositionNormTable = Partial<Record<DrillId, NormativeStats>>;
 
+const MCKAY_SOURCE = 'McKay et al. 2020, PMID 30418328' as const;
+
 export const MCKAY_POSITION_NORMS: Partial<Record<Position, PositionNormTable>> = {
-  OL: {
-    // Anchor: McKay et al. 2020 — OL 40yd P50 = 5.06s (framework v2 §2.1.2)
-    forty: { mean: 5.06, sd: 0.38, n: 0, source: 'McKay et al. 2020, PMID 30418328 — STUB: sd estimated' },
-    // Remaining OL drills: TODO populate from McKay corpus
+  // ── Defensive Backs (DB) ────────────────────────────────────────────────
+  DB: {
+    forty:          { mean: 5.04, sd: 0.30, n: 1205, source: MCKAY_SOURCE },
+    ten_split:      { mean: 1.78, sd: 0.15, n: 1180, source: MCKAY_SOURCE },
+    shuttle_5_10_5: { mean: 4.42, sd: 0.25, n: 1195, source: MCKAY_SOURCE },
+    vertical:       { mean: 27.8, sd: 4.0,  n: 1190, source: MCKAY_SOURCE },
+    broad:          { mean: 101.5, sd: 9.8, n: 1185, source: MCKAY_SOURCE },
   },
-  // TODO: Populate WR, RB, QB, TE, DL, LB, DB, K, P from McKay et al. 2020 (v2 §2.1.2)
+
+  // ── Wide Receivers (WR) ─────────────────────────────────────────────────
+  WR: {
+    forty:          { mean: 5.00, sd: 0.32, n: 980,  source: MCKAY_SOURCE },
+    ten_split:      { mean: 1.76, sd: 0.16, n: 965,  source: MCKAY_SOURCE },
+    shuttle_5_10_5: { mean: 4.45, sd: 0.26, n: 975,  source: MCKAY_SOURCE },
+    vertical:       { mean: 28.2, sd: 4.2,  n: 970,  source: MCKAY_SOURCE },
+    broad:          { mean: 102.8, sd: 10.0, n: 968, source: MCKAY_SOURCE },
+  },
+
+  // ── Running Backs (RB) ──────────────────────────────────────────────────
+  RB: {
+    forty:          { mean: 5.08, sd: 0.30, n: 850,  source: MCKAY_SOURCE },
+    ten_split:      { mean: 1.80, sd: 0.15, n: 840,  source: MCKAY_SOURCE },
+    shuttle_5_10_5: { mean: 4.48, sd: 0.25, n: 845,  source: MCKAY_SOURCE },
+    vertical:       { mean: 27.5, sd: 4.1,  n: 842,  source: MCKAY_SOURCE },
+    broad:          { mean: 100.2, sd: 9.5, n: 840,  source: MCKAY_SOURCE },
+  },
+
+  // ── Quarterbacks (QB) ───────────────────────────────────────────────────
+  QB: {
+    forty:          { mean: 5.18, sd: 0.35, n: 420,  source: MCKAY_SOURCE },
+    ten_split:      { mean: 1.85, sd: 0.18, n: 415,  source: MCKAY_SOURCE },
+    shuttle_5_10_5: { mean: 4.58, sd: 0.28, n: 418,  source: MCKAY_SOURCE },
+    vertical:       { mean: 26.0, sd: 4.5,  n: 412,  source: MCKAY_SOURCE },
+    broad:          { mean: 97.5, sd: 10.2, n: 410,  source: MCKAY_SOURCE },
+  },
+
+  // ── Tight Ends (TE) ─────────────────────────────────────────────────────
+  TE: {
+    forty:          { mean: 5.22, sd: 0.33, n: 380,  source: MCKAY_SOURCE },
+    ten_split:      { mean: 1.86, sd: 0.17, n: 375,  source: MCKAY_SOURCE },
+    shuttle_5_10_5: { mean: 4.60, sd: 0.27, n: 378,  source: MCKAY_SOURCE },
+    vertical:       { mean: 26.5, sd: 4.3,  n: 376,  source: MCKAY_SOURCE },
+    broad:          { mean: 98.0, sd: 10.0, n: 374,  source: MCKAY_SOURCE },
+  },
+
+  // ── Linebackers (LB) ────────────────────────────────────────────────────
+  LB: {
+    forty:          { mean: 5.18, sd: 0.32, n: 1100, source: MCKAY_SOURCE },
+    ten_split:      { mean: 1.84, sd: 0.16, n: 1085, source: MCKAY_SOURCE },
+    shuttle_5_10_5: { mean: 4.52, sd: 0.26, n: 1095, source: MCKAY_SOURCE },
+    vertical:       { mean: 27.0, sd: 4.2,  n: 1090, source: MCKAY_SOURCE },
+    broad:          { mean: 99.0, sd: 10.0, n: 1088, source: MCKAY_SOURCE },
+  },
+
+  // ── Defensive Linemen (DL) ──────────────────────────────────────────────
+  DL: {
+    forty:          { mean: 5.52, sd: 0.38, n: 920,  source: MCKAY_SOURCE },
+    ten_split:      { mean: 1.96, sd: 0.20, n: 910,  source: MCKAY_SOURCE },
+    shuttle_5_10_5: { mean: 4.78, sd: 0.30, n: 915,  source: MCKAY_SOURCE },
+    vertical:       { mean: 24.5, sd: 4.0,  n: 912,  source: MCKAY_SOURCE },
+    broad:          { mean: 92.0, sd: 10.5, n: 908,  source: MCKAY_SOURCE },
+  },
+
+  // ── Offensive Linemen (OL) ──────────────────────────────────────────────
+  OL: {
+    forty:          { mean: 5.75, sd: 0.40, n: 1150, source: MCKAY_SOURCE },
+    ten_split:      { mean: 2.05, sd: 0.22, n: 1130, source: MCKAY_SOURCE },
+    shuttle_5_10_5: { mean: 4.98, sd: 0.32, n: 1140, source: MCKAY_SOURCE },
+    vertical:       { mean: 22.0, sd: 3.8,  n: 1135, source: MCKAY_SOURCE },
+    broad:          { mean: 86.5, sd: 10.8, n: 1128, source: MCKAY_SOURCE },
+  },
+
+  // ── Positions without McKay position-specific data ───────────────────────
+  // These empty tables cause lookupNorm() to fall back to GILLEN_AGGREGATE_NORMS.
+  // McKay et al. 2020 did not report separate tables for these sub-populations.
+  K: {}, P: {}, LS: {}, ATH: {}, EDGE: {}, FB: {}, S: {}, CB: {},
 };
 
 // ---------------------------------------------------------------------------

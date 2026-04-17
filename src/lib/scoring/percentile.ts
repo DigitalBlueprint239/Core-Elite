@@ -144,31 +144,39 @@ export interface NormLookupResult {
  * Resolve the best available normative stats for a given drill, position, and grade.
  *
  * Priority:
- *   1. McKay et al. 2020 position × grade exact match
- *   2. McKay et al. 2020 position aggregate (any grade)
- *   3. Gillen et al. 2019 all-position aggregate (always available)
+ *   1. McKay et al. 2020 position × aggregate (if position has a populated table entry)
+ *   2. Gillen et al. 2019 all-position aggregate (always available)
  *
- * Returns the norm and its provenance so callers can surface the source to scouts.
+ * Fallback guarantee:
+ *   - If `position` is undefined, null, or 'ATHLETE' → Gillen
+ *   - If `position` is in MCKAY_POSITION_NORMS but the table is empty (e.g. K, P) → Gillen
+ *   - If `position` has a table but the specific drill is absent → Gillen
+ *   - If the drill is not in GILLEN_AGGREGATE_NORMS → runtime error (caller's bug)
+ *
+ * Grade-specific subdivision: McKay et al. 2020 does not publish grade-split tables,
+ * so `_grade` is retained for future API compatibility only.
  */
 export function lookupNorm(
   drillId:   DrillId,
   position?: Position,
-  _grade?:   Grade,     // Retained for API completeness; grade-specific table pending McKay data
+  _grade?:   Grade,     // Retained for API completeness; grade-specific tables not in McKay 2020
 ): NormLookupResult {
-  // Priority 1: position-specific norms (McKay et al. 2020)
+  // Priority 1: position-specific norms from McKay et al. 2020.
+  // Skipped when: position is absent, is the 'ATHLETE' sentinel, the position
+  // has no table in MCKAY_POSITION_NORMS, or the position's table is empty /
+  // does not contain this drill (e.g. K, P, LS, and all sub-positions map to
+  // empty tables and always fall through to Gillen).
   if (position && position !== 'ATHLETE') {
     const posTable = MCKAY_POSITION_NORMS[position];
     if (posTable) {
       const norm = posTable[drillId];
       if (norm) {
-        // Grade-specific subdivision not yet available — would require a nested structure.
-        // When McKay grade data is populated, add grade lookup here before position aggregate.
         return { norm, source: 'position_aggregate' };
       }
     }
   }
 
-  // Priority 3: Gillen et al. 2019 aggregate (always available)
+  // Priority 2: Gillen et al. 2019 aggregate — always present for all 5 BES drills.
   return {
     norm:   GILLEN_AGGREGATE_NORMS[drillId],
     source: 'gillen_aggregate',
@@ -187,6 +195,8 @@ export interface PercentileResult {
   norm:       NormativeStats;
   normSource: NormSource;
   direction:  ScoreDirection;
+  /** True when McKay position-specific norms were used; false when falling back to Gillen aggregate. */
+  isPositionAdjusted: boolean;
 }
 
 /**
@@ -220,6 +230,7 @@ export function getPercentile(
     norm,
     normSource: source,
     direction,
+    isPositionAdjusted: source !== 'gillen_aggregate',
   };
 }
 

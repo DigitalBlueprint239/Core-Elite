@@ -375,12 +375,12 @@ export default function CoachPortal() {
       last_name:   a.last_name,
       position:    a.position,
       bestResults: a.bestResults,
-      // Extended fields not yet on the AthleteRow client type — empty until
-      // migration 015 adds high_school, grad_year, height, weight columns.
+      // Extended fields — high_school added via migration 022;
+      // height_in / weight_lb not on AthleteRow (fetched separately for export).
       high_school: undefined,
       grad_year:   undefined,
-      height:      undefined,
-      weight:      undefined,
+      height_in:   undefined,
+      weight_lb:   undefined,
     }));
     const csv      = generateArmsCSV(exportAthletes, eventName);
     const filename = buildExportFilename(eventName || 'event');

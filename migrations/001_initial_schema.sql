@@ -1,16 +1,17 @@
--- =============================================================================
--- WARNING: HISTORICAL REFERENCE ONLY — DO NOT USE AS A MIGRATION SOURCE
+-- Migration 001: Initial Schema (canonical seed)
 --
--- This file is the original baseline schema snapshot (pre-migration era).
--- It does NOT reflect the current database state. It is missing columns and
--- tables added by migrations 002–022 (status, override_pin, high_school,
--- organizations, audit_log, rate limiting, HLC fields, and more).
+-- This is the authoritative baseline schema for a fresh Core Elite database.
+-- Run this first, then apply 002+ in numeric order.
 --
--- Authoritative sequence: migrations/001_initial_schema.sql through 022+
--- Run those files in numeric order against a fresh database.
+-- Source: supabase_schema.sql (original project seed, committed 2026-04-09).
+-- This file is the numbered copy that belongs in the migration sequence.
+--
+-- NOTE: supabase_schema.sql at the repo root is kept as a historical reference
+-- only. It does NOT reflect the current column set — it predates migrations
+-- 002–022. Always use the numbered sequence (001+) as the source of truth.
 -- =============================================================================
 
--- Core Elite Combine 2026 Database Schema (original seed — see warning above)
+-- Core Elite Combine 2026 Database Schema
 
 -- 1. Events
 CREATE TABLE events (

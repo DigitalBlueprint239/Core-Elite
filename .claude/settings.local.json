@@ -27,7 +27,22 @@
       "Bash(cat .env)",
       "Bash(cat .env.production)",
       "Read(//c/Users/1/**)",
-      "Read(//c/Users/1/.supabase/**)"
+      "Read(//c/Users/1/.supabase/**)",
+      "Bash(curl *)",
+      "Bash(grep -v \"^$\")",
+      "Bash(ls C:/Projects/Core-Elite/.env*)",
+      "Bash(netstat -ano)",
+      "Bash(grep -l \"on_auth_user_created\\\\|profiles\\\\|trigger\\\\|role\" C:/Projects/Core-Elite/migrations/*.sql C:/Projects/Core-Elite/supabase/migrations/*.sql)",
+      "Bash(npm run *)",
+      "Bash(echo \"EXIT_CODE:$?\")",
+      "Bash(awk -F\"'\" '{print $2}')",
+      "Bash(npm uninstall *)",
+      "Bash(ls C:/Projects/Core-Elite/migrations/*.sql)",
+      "Bash(xargs -I{} basename {})",
+      "Bash(grep \"K: {}, P: {}\" C:/Projects/Core-Elite/src/lib/scoring/constants.ts)",
+      "Bash(grep *)",
+      "Bash(git -C C:/Projects/Core-Elite diff --cached --name-only)",
+      "Bash(ls migrations/*.sql)"
     ]
   }
 }

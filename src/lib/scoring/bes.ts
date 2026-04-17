@@ -63,6 +63,8 @@ export interface BESComponentScore {
   normalizedWeight:     number;    // Adjusted weight given available drills
   weightedContribution: number;    // normalizedWeight × percentile
   normSource:           string;
+  /** True when McKay position-specific norms were used for this drill; false = Gillen aggregate. */
+  isPositionAdjusted:   boolean;
 }
 
 export interface BESResult {
@@ -79,11 +81,17 @@ export interface BESResult {
   disparityPenalty: number;       // ≤ 0; 0 when no disparity
 
   // Metadata
-  position?:     Position;
-  grade?:        Grade;
+  position?:          Position;
+  grade?:             Grade;
   availableWeightSum: number;    // Sum of raw weights for drills that were provided and valid
   validDrillCount:    number;
-  invalidDrills: Array<{ drillId: DrillId; reason: string }>;
+  invalidDrills:      Array<{ drillId: DrillId; reason: string }>;
+  /**
+   * True when at least one drill used McKay position-specific norms.
+   * False when every drill fell back to Gillen aggregate (unknown/unsupported position).
+   * Use this to label the score card: "Position-Adjusted" vs "Aggregate Norms".
+   */
+  isPositionAdjusted: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -192,6 +200,7 @@ export function computeBES(
       normalizedWeight:     0, // filled in step 3
       weightedContribution: 0, // filled in step 3
       normSource:           `${pResult.normSource} (${pResult.norm.source})`,
+      isPositionAdjusted:   pResult.isPositionAdjusted,
     });
   }
 
@@ -274,8 +283,9 @@ export function computeBES(
     position,
     grade,
     availableWeightSum,
-    validDrillCount:  components.length,
+    validDrillCount:    components.length,
     invalidDrills,
+    isPositionAdjusted: components.some(c => c.isPositionAdjusted),
   };
 }
 

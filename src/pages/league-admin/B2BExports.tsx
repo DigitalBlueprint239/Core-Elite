@@ -29,7 +29,7 @@ export default function B2BExports() {
 
       const { data: athletes } = await supabase
         .from('athletes')
-        .select('id, first_name, last_name, position, high_school, grad_year, height, weight')
+        .select('id, first_name, last_name, position, high_school, grad_year, height_in, weight_lb')
         .eq('event_id', selectedEvent);
 
       const { data: results } = await supabase
@@ -55,8 +55,8 @@ export default function B2BExports() {
         position:    a.position,
         high_school: a.high_school,
         grad_year:   a.grad_year,
-        height:      a.height,
-        weight:      a.weight,
+        height_in:   a.height_in,
+        weight_lb:   a.weight_lb,
         bestResults: bestMap[a.id] ?? {},
       }));
 
