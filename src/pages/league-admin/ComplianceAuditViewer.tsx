@@ -157,11 +157,11 @@ export default function ComplianceAuditViewer() {
       const actorIds = [...new Set((data ?? []).map((e: any) => e.actor_id))];
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('id, email')
-        .in('id', actorIds.slice(0, 100));
+        .select('user_id, display_name')
+        .in('user_id', actorIds.slice(0, 100));
 
       const profileMap: Record<string, string> = {};
-      (profiles ?? []).forEach((p: any) => { profileMap[p.id] = p.email; });
+      (profiles ?? []).forEach((p: any) => { profileMap[p.user_id] = p.display_name; });
 
       // Enrich with event name
       const eventIds = [...new Set((data ?? []).map((e: any) => e.event_id).filter(Boolean))];

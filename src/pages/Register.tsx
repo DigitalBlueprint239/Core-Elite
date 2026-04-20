@@ -60,7 +60,7 @@ export default function Register() {
         const { data: profile } = await supabase
           .from('profiles')
           .select('role')
-          .eq('id', session.user.id)
+          .eq('user_id', session.user.id)
           .single();
         setIsAdmin(profile?.role === 'admin');
       }

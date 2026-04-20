@@ -29,7 +29,7 @@ export default function EnterpriseLayout() {
               <span className="text-white text-[10px] font-black tracking-tighter">CE</span>
             </div>
             <span className="text-sm font-black tracking-tight uppercase text-zinc-900">
-              Core Elite
+              Core Elite Network
             </span>
             <span className="px-1.5 py-0.5 bg-zinc-100 text-zinc-400 text-[9px] font-bold uppercase rounded tracking-widest leading-none">
               Enterprise
@@ -90,7 +90,7 @@ export default function EnterpriseLayout() {
               <span className="text-white text-[9px] font-black">CE</span>
             </div>
             <span className="text-xs font-bold uppercase tracking-widest text-zinc-400">
-              Core Elite Enterprise
+              Core Elite Network Enterprise
             </span>
           </div>
           <div className="flex flex-wrap gap-6">
@@ -105,7 +105,7 @@ export default function EnterpriseLayout() {
             </Link>
           </div>
           <p className="text-xs text-zinc-300">
-            © {new Date().getFullYear()} Core Elite. All rights reserved.
+            © {new Date().getFullYear()} Core Elite Network. All rights reserved.
           </p>
         </div>
       </footer>

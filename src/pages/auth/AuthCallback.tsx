@@ -254,7 +254,7 @@ async function routeByRole(
     const { data: profile } = await supabase
       .from('profiles')
       .select('role')
-      .eq('id', userId)
+      .eq('user_id', userId)
       .single<UserProfile>();
 
     const role = profile?.role ?? 'player';

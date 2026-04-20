@@ -12,7 +12,6 @@ interface AuditEntry {
   new_value: Record<string, unknown> | null;
   old_value: Record<string, unknown> | null;
   user_id: string | null;
-  profiles: { email: string } | null;
 }
 
 const ACTION_COLORS: Record<string, string> = {
@@ -48,7 +47,7 @@ export function AuditTab({ eventId }: { eventId?: string }) {
 
     let query = supabase
       .from('audit_log')
-      .select('*, profiles(email)')
+      .select('*')
       .order('created_at', { ascending: false })
       .limit(100);
 
@@ -192,7 +191,7 @@ export function AuditTab({ eventId }: { eventId?: string }) {
                     {formatTime(entry.created_at)}
                   </td>
                   <td className="p-4 text-xs text-zinc-600 max-w-[140px] truncate">
-                    {entry.profiles?.email ?? <span className="text-zinc-300 italic">system</span>}
+                    {entry.user_id ? entry.user_id.slice(0, 8) + '…' : <span className="text-zinc-300 italic">system</span>}
                   </td>
                   <td className="p-4">
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wide ${ACTION_COLORS[entry.action] ?? 'bg-zinc-100 text-zinc-600'}`}>

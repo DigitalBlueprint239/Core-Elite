@@ -274,7 +274,7 @@ export default function ClaimBand() {
             <div className="flex gap-3">
               <button
                 onClick={() => {
-                  const text = encodeURIComponent(`Just checked in at the Core Elite Combine 2026! 💪🏈 #CoreElite #CombineReady`);
+                  const text = encodeURIComponent(`Just went through the Core Elite Network Combine! 💪🏈 #CoreEliteNetwork #CombineReady`);
                   window.open(`https://twitter.com/intent/tweet?text=${text}`, '_blank');
                 }}
                 className="flex-1 flex items-center justify-center gap-2 py-3 bg-zinc-900 text-white rounded-xl text-sm font-bold hover:bg-zinc-800 transition-colors"

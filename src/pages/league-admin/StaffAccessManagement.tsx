@@ -135,7 +135,7 @@ export default function StaffAccessManagement() {
       // Fetch profiles (staff users)
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('id, email, display_name, last_sign_in_at')
+        .select('id, user_id, display_name')
         .order('display_name');
 
       // Fetch events (recent + upcoming)
@@ -159,9 +159,8 @@ export default function StaffAccessManagement() {
 
       const stList: StaffMember[] = (profiles ?? []).map((p: any) => ({
         id:           p.id,
-        email:        p.email ?? '—',
-        display_name: p.display_name ?? p.email ?? p.id.slice(0, 8),
-        last_sign_in: p.last_sign_in_at,
+        email:        p.display_name ?? p.id?.slice(0, 8) ?? '—',
+        display_name: p.display_name ?? p.id?.slice(0, 8) ?? '—',
       }));
 
       // Build matrix from assignments

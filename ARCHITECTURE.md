@@ -1,4 +1,4 @@
-# Core Elite Combine — Architecture Reference
+# Core Elite Network — Architecture Reference
 
 > Last updated: 2026-04-16
 > Covers the production Vite/React web application and its planned extension packages.

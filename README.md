@@ -1,6 +1,6 @@
-# Core Elite Combine 2026
+# Core Elite Network
 
-A production-ready web application for athletic combine events.
+The digital recruiting and performance OS for elite athletes — live combines, recruiting profiles, and real-time results.
 
 ## How to Run
 

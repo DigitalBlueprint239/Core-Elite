@@ -224,7 +224,7 @@ export default function CommissionerOverview() {
             Ready to standardize your combine operations?
           </h2>
           <p className="text-zinc-500 text-lg mb-10 max-w-xl mx-auto">
-            Schedule a 30-minute technical walkthrough with a Core Elite
+            Schedule a 30-minute technical walkthrough with a Core Elite Network
             implementation engineer.
           </p>
           <div className="flex flex-wrap gap-4 justify-center">

@@ -72,7 +72,7 @@ export default function Home() {
             transition={{ delay: 0.1 }}
             className="text-5xl md:text-6xl font-black uppercase italic tracking-tighter mb-3"
           >
-            CORE ELITE <span style={{ color: '#c8a200' }}>COMBINE 2026</span>
+            CORE ELITE <span style={{ color: '#c8a200' }}>NETWORK</span>
           </motion.h1>
           <motion.p
             initial={{ opacity: 0 }}
@@ -144,7 +144,7 @@ export default function Home() {
 
       <footer className="pb-8 text-center text-zinc-400 text-sm flex items-center justify-center gap-2">
         <img src={BRAND.logo} alt="" className="w-4 h-4 opacity-50" />
-        &copy; 2026 Core Elite Athletic Testing. All rights reserved.
+        &copy; 2026 Core Elite Network. All rights reserved.
       </footer>
     </div>
   );

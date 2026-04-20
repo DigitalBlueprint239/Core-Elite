@@ -13,7 +13,7 @@ export interface Organization {
 
 const DEFAULT_ORG: Organization = {
   id: '',
-  name: 'Core Elite',
+  name: 'Core Elite Network',
   slug: 'core-elite',
   logo_url: null,
   primary_color: '#18181b',
@@ -49,7 +49,7 @@ export function useOrganization(eventId?: string): {
           const { data: profile } = await supabase
             .from('profiles')
             .select('organization_id')
-            .eq('id', user.id)
+            .eq('user_id', user.id)
             .single();
 
           if (profile?.organization_id) {

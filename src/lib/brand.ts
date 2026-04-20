@@ -1,5 +1,5 @@
 export const BRAND = {
-  name: 'Core Elite',
+  name: 'Core Elite Network',
   tagline: 'Prove Your Elite',
   colors: {
     primary: '#18181b',      // zinc-900

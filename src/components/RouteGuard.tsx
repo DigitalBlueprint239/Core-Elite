@@ -63,7 +63,7 @@ export function RouteGuard({ children, requireAdmin = false }: RouteGuardProps) 
         const { data, error } = await supabase
           .from('profiles')
           .select('role')
-          .eq('id', session.user.id)
+          .eq('user_id', session.user.id)
           .single();
 
         if (error && error.code !== 'PGRST116') {
@@ -93,7 +93,7 @@ export function RouteGuard({ children, requireAdmin = false }: RouteGuardProps) 
         const { data } = await supabase
           .from('profiles')
           .select('role')
-          .eq('id', session.user.id)
+          .eq('user_id', session.user.id)
           .single();
         setProfile(data ?? null);
       },
