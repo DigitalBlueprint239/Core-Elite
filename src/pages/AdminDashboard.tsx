@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { generateArmsCSV, downloadCSV, buildExportFilename, ExportableAthlete } from '../lib/b2b-exports';
 import { supabase } from '../lib/supabase';
-import { motion } from 'motion/react';
 import {
   Users,
   CreditCard,
@@ -16,6 +15,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Trophy,
+  Shield,
 } from 'lucide-react';
 import { DRILL_CATALOG } from '../constants';
 import { SkeletonCard, SkeletonTable } from '../components/Skeleton';
@@ -39,6 +39,20 @@ function athleteStatus(athlete: any): 'completed' | 'in_progress' | 'missing' {
   if (count >= 5) return 'completed';
   if (count > 0)  return 'in_progress';
   return 'missing';
+}
+
+function scoreColor(score: number): string {
+  if (score >= 80) return 'text-[#c8a200]';
+  if (score >= 60) return 'text-emerald-400';
+  if (score >= 40) return 'text-zinc-300';
+  return 'text-zinc-500';
+}
+
+function progressBarColor(count: number): string {
+  if (count >= 5) return 'bg-[#c8a200]';
+  if (count >= 3) return 'bg-emerald-500';
+  if (count >= 1) return 'bg-amber-500';
+  return 'bg-zinc-700';
 }
 
 // ---------------------------------------------------------------------------
@@ -71,16 +85,12 @@ export default function AdminDashboard() {
   const [exportError, setExportError] = useState<string | null>(null);
   const [page, setPage]             = useState(0);
 
-  // Compound filter state
   const [positionFilter, setPositionFilter] = useState('all');
   const [statusFilter, setStatusFilter]     = useState('all');
-
-  // Multi-column sort state (replaces scoreSortDir)
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'score', direction: 'desc' });
 
   const PAGE_SIZE = 20;
 
-  // Toggle sort: same column → flip direction; different column → default desc
   function handleSort(key: SortKey) {
     setSortConfig(prev => ({
       key,
@@ -89,7 +99,6 @@ export default function AdminDashboard() {
     setPage(0);
   }
 
-  // Sort indicator character
   function sortIndicator(key: SortKey): string {
     if (sortConfig.key !== key) return '↕';
     return sortConfig.direction === 'desc' ? '↓' : '↑';
@@ -190,20 +199,16 @@ export default function AdminDashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  // ── Compound filter + sort pipeline ────────────────────────────────────────
   const filteredAndSortedAthletes = useMemo(() => {
     const lower = searchTerm.toLowerCase();
 
     const filtered = athletes.filter(a => {
-      // Text search: name or band number
       const nameMatch = `${a.first_name} ${a.last_name}`.toLowerCase().includes(lower);
       const bandMatch = a.bands?.display_number?.toString().includes(searchTerm);
       if (!nameMatch && !bandMatch) return false;
 
-      // Position filter
       if (positionFilter !== 'all' && a.position !== positionFilter) return false;
 
-      // Status filter
       const s = athleteStatus(a);
       if (statusFilter === 'completed'   && s !== 'completed')   return false;
       if (statusFilter === 'in_progress' && s !== 'in_progress') return false;
@@ -212,7 +217,6 @@ export default function AdminDashboard() {
       return true;
     });
 
-    // Sort
     const sorted = [...filtered].sort((a, b) => {
       let cmp = 0;
       if (sortConfig.key === 'name') {
@@ -222,7 +226,6 @@ export default function AdminDashboard() {
       } else if (sortConfig.key === 'progress') {
         cmp = (a.results?.length || 0) - (b.results?.length || 0);
       } else {
-        // score
         const pa = avgPercentile(a) ?? -1;
         const pb = avgPercentile(b) ?? -1;
         cmp = pa - pb;
@@ -239,65 +242,81 @@ export default function AdminDashboard() {
   );
   const totalPages = Math.ceil(filteredAndSortedAthletes.length / PAGE_SIZE);
 
+  const hasActiveFilter = positionFilter !== 'all' || statusFilter !== 'all' || !!searchTerm;
+
   return (
-    <div className="min-h-screen bg-zinc-50">
-      {/* ── Nav ────────────────────────────────────────────────────────────── */}
-      <nav className="bg-white border-b border-zinc-200 px-8 py-4 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+    <div className="min-h-screen bg-zinc-950 text-white">
+
+      {/* ── Sticky Nav — glassmorphism ──────────────────────────────────────── */}
+      <nav className="sticky top-0 z-20 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800/60">
+        <div className="max-w-7xl mx-auto px-6 lg:px-8 h-16 flex items-center justify-between gap-6">
+
           <div className="flex items-center gap-4">
             <Link
               to="/"
-              className="p-2 hover:bg-zinc-100 rounded-xl transition-colors text-zinc-500 hover:text-zinc-900"
+              className="p-2 rounded-lg text-zinc-500 hover:text-white hover:bg-zinc-800 transition-all"
               title="Back to Home"
             >
-              <Home className="w-6 h-6" />
+              <Home className="w-5 h-5" />
             </Link>
-            <div className="h-8 w-px bg-zinc-200 mx-2" />
-            <div className="bg-zinc-900 text-white p-2 rounded-lg">
-              <Activity className="w-6 h-6" />
+            <div className="h-5 w-px bg-zinc-800" />
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 bg-[#c8a200] rounded-md flex items-center justify-center shrink-0">
+                <Shield className="w-4 h-4 text-zinc-900" />
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500 leading-none">Core Elite Network</p>
+                <p className="text-sm font-black uppercase tracking-tight text-white leading-tight">Admin Dashboard</p>
+              </div>
             </div>
-            <h1 className="text-xl font-black uppercase italic tracking-tighter">Admin Dashboard</h1>
           </div>
-          <div className="flex items-center gap-4">
+
+          <div className="flex items-center gap-3">
             <CoachPortalLink />
             <div className="flex flex-col items-end gap-1">
               <button
                 onClick={handleExport}
                 disabled={exporting}
-                className="flex items-center gap-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-700 text-white rounded-xl text-sm font-bold transition-colors disabled:opacity-50"
+                className="flex items-center gap-2 px-4 py-2 bg-[#c8a200] hover:bg-[#b89200] text-zinc-900 rounded-lg text-xs font-black uppercase tracking-wider transition-colors disabled:opacity-40"
               >
-                <Download className="w-4 h-4" />
-                {exporting ? 'Building CSV...' : 'Export ARMS CSV'}
+                <Download className="w-3.5 h-3.5" />
+                {exporting ? 'Building...' : 'Export ARMS CSV'}
               </button>
               {exportError && (
-                <span className="text-xs text-red-600 font-medium max-w-xs text-right">{exportError}</span>
+                <span className="text-[10px] text-red-400 font-medium max-w-xs text-right">{exportError}</span>
               )}
             </div>
-            <div className="w-10 h-10 bg-zinc-200 rounded-full border-2 border-white shadow-sm" />
           </div>
+
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto px-8 py-8 space-y-8">
-        {/* ── Stats Grid ───────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <main className="max-w-7xl mx-auto px-6 lg:px-8 py-8 space-y-8">
+
+        {/* ── Metric Cards ─────────────────────────────────────────────────── */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {loading ? (
             <><SkeletonCard /><SkeletonCard /><SkeletonCard /><SkeletonCard /></>
           ) : (
             <>
-              <StatCard icon={<Users />}       label="Athletes Registered" value={stats.athletes}  color="blue"    />
-              <StatCard icon={<CreditCard />}  label="Bands Assigned"      value={stats.bands}     color="purple"  />
-              <StatCard icon={<Activity />}    label="Results Captured"    value={stats.results}   color="emerald" />
-              <StatCard icon={<CheckCircle />} label="Completed Drills"    value={stats.completed} color="amber"   />
+              <StatCard icon={<Users />}       label="Athletes Registered" value={stats.athletes}  accent="gold"    />
+              <StatCard icon={<CreditCard />}  label="Bands Assigned"      value={stats.bands}     accent="violet"  />
+              <StatCard icon={<Activity />}    label="Results Captured"    value={stats.results}   accent="emerald" />
+              <StatCard icon={<CheckCircle />} label="Drills Complete"     value={stats.completed} accent="amber"   />
             </>
           )}
         </div>
 
         {/* ── Station Health Ribbon ────────────────────────────────────────── */}
-        <div className="space-y-3">
-          <h2 className="text-sm font-black uppercase tracking-wider text-zinc-500">Station Health</h2>
+        <section className="space-y-3">
+          <div className="flex items-center gap-3">
+            <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Live Station Health</p>
+            <div className="flex-1 h-px bg-zinc-800" />
+            <p className="text-[10px] font-mono text-zinc-600">{stations.length} stations</p>
+          </div>
+
           {stations.length === 0 ? (
-            <p className="text-xs text-zinc-400 font-medium">No stations configured.</p>
+            <p className="text-xs text-zinc-600 font-medium">No stations configured.</p>
           ) : (
             <div className="flex flex-wrap gap-2">
               {stations.map(station => {
@@ -308,27 +327,29 @@ export default function AdminDashboard() {
                 const seenMinsAgo = lastSeen ? Math.floor((now.getTime() - lastSeen.getTime()) / 60000) : null;
                 const syncMinsAgo = lastSync ? Math.floor((now.getTime() - lastSync.getTime()) / 60000) : null;
 
-                const isStale    = seenMinsAgo !== null && seenMinsAgo > 2;
+                const isStale     = seenMinsAgo !== null && seenMinsAgo > 2;
                 const isSyncStale = syncMinsAgo !== null && syncMinsAgo > 10;
-                const isOffline  = !status || !status.is_online || isStale;
-                const isCritical = (status?.pending_queue_count ?? 0) > 50;
-                const isWarning  = !isOffline && (isSyncStale || (status?.pending_queue_count ?? 0) > 10);
+                const isOffline   = !status || !status.is_online || isStale;
+                const isCritical  = (status?.pending_queue_count ?? 0) > 50;
+                const isWarning   = !isOffline && (isSyncStale || (status?.pending_queue_count ?? 0) > 10);
 
-                const pillStyle = !status
-                  ? 'bg-zinc-100 text-zinc-500 border-zinc-200'
+                // Pill shell — dark base, colored border only
+                const pillClass = !status
+                  ? 'border-zinc-700 text-zinc-500'
                   : isCritical || isOffline
-                    ? 'bg-red-50 text-red-700 border-red-200'
+                    ? 'border-red-800/60 text-red-400'
                     : isWarning
-                      ? 'bg-amber-50 text-amber-700 border-amber-200'
-                      : 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                      ? 'border-amber-800/60 text-amber-400'
+                      : 'border-emerald-800/60 text-emerald-400';
 
-                const dotStyle = !status
-                  ? 'bg-zinc-400'
+                // Dot + glow
+                const dotClass = !status
+                  ? 'bg-zinc-600'
                   : isCritical || isOffline
-                    ? 'bg-red-500'
+                    ? 'bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.7)]'
                     : isWarning
-                      ? 'bg-amber-500'
-                      : 'bg-emerald-500';
+                      ? 'bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.7)]'
+                      : 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.7)]';
 
                 const statusLabel = !status
                   ? 'No heartbeat'
@@ -338,7 +359,7 @@ export default function AdminDashboard() {
                       ? `Critical · ${status.pending_queue_count} pending`
                       : isSyncStale
                         ? `Sync stale · ${syncMinsAgo}m ago`
-                        : `Online`;
+                        : 'Online';
 
                 const tooltipText = [
                   station.name,
@@ -352,47 +373,51 @@ export default function AdminDashboard() {
                   <div
                     key={station.id}
                     title={tooltipText}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-bold cursor-default select-none ${pillStyle}`}
+                    className={`flex items-center gap-2 px-3 py-1.5 bg-zinc-900 rounded-full border text-[11px] font-bold cursor-default select-none transition-all ${pillClass}`}
                   >
-                    {/* Traffic-light dot */}
-                    <span className={`w-2 h-2 rounded-full shrink-0 ${dotStyle}`} />
-
-                    {/* Station name */}
-                    <span>{station.name}</span>
-
-                    {/* Inline alert suffix */}
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${dotClass}`} />
+                    <span className="font-sans">{station.name}</span>
                     {!status ? (
-                      <span className="opacity-60">· waiting</span>
+                      <span className="opacity-50 font-mono text-[9px]">–</span>
                     ) : isOffline ? (
-                      <WifiOff className="w-3 h-3 opacity-70 shrink-0" />
+                      <WifiOff className="w-3 h-3 opacity-60 shrink-0" />
                     ) : (status?.pending_queue_count ?? 0) > 0 ? (
-                      <span className="opacity-60">· {status.pending_queue_count}</span>
+                      <span className="font-mono text-[9px] opacity-70">{status.pending_queue_count}</span>
                     ) : (
-                      <Wifi className="w-3 h-3 opacity-50 shrink-0" />
+                      <Wifi className="w-3 h-3 opacity-40 shrink-0" />
                     )}
                   </div>
                 );
               })}
             </div>
           )}
-        </div>
+        </section>
 
-        {/* ── Athlete Progress (full width) ────────────────────────────────── */}
-        <div className="space-y-4">
-          {/* Table toolbar */}
+        {/* ── Athlete Ledger ───────────────────────────────────────────────── */}
+        <section className="space-y-4">
+
+          {/* Toolbar */}
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-xl font-bold">Athlete Progress</h2>
+            <div className="flex items-center gap-3">
+              <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Athlete Ledger</p>
+              <div className="h-4 w-px bg-zinc-800" />
+              {!loading && (
+                <p className="font-mono text-[10px] text-zinc-600">
+                  {filteredAndSortedAthletes.length}<span className="text-zinc-700">/{athletes.length}</span>
+                </p>
+              )}
+            </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              {/* Text search */}
+              {/* Search */}
               <div className="relative">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" />
                 <input
                   type="text"
                   placeholder="Search athletes..."
                   value={searchTerm}
                   onChange={e => { setSearchTerm(e.target.value); setPage(0); }}
-                  className="pl-10 pr-4 py-2 bg-white border border-zinc-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-zinc-900 w-52"
+                  className="pl-9 pr-4 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-xs text-white placeholder-zinc-600 outline-none focus:border-[#c8a200]/60 focus:ring-1 focus:ring-[#c8a200]/20 transition-all w-48 font-sans"
                 />
               </div>
 
@@ -400,7 +425,7 @@ export default function AdminDashboard() {
               <select
                 value={positionFilter}
                 onChange={e => { setPositionFilter(e.target.value); setPage(0); }}
-                className="py-2 pl-3 pr-8 bg-white border border-zinc-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-zinc-900 appearance-none cursor-pointer text-zinc-700"
+                className="py-2 pl-3 pr-7 bg-zinc-900 border border-zinc-700 rounded-lg text-xs font-bold text-zinc-300 outline-none focus:border-[#c8a200]/60 appearance-none cursor-pointer"
               >
                 <option value="all">All Positions</option>
                 <option value="QB">QB</option>
@@ -421,7 +446,7 @@ export default function AdminDashboard() {
               <select
                 value={statusFilter}
                 onChange={e => { setStatusFilter(e.target.value); setPage(0); }}
-                className="py-2 pl-3 pr-8 bg-white border border-zinc-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-zinc-900 appearance-none cursor-pointer text-zinc-700"
+                className="py-2 pl-3 pr-7 bg-zinc-900 border border-zinc-700 rounded-lg text-xs font-bold text-zinc-300 outline-none focus:border-[#c8a200]/60 appearance-none cursor-pointer"
               >
                 <option value="all">All Statuses</option>
                 <option value="completed">Completed</option>
@@ -429,146 +454,147 @@ export default function AdminDashboard() {
                 <option value="missing">Missing Data</option>
               </select>
 
-              {/* Active filter count badge */}
-              {(positionFilter !== 'all' || statusFilter !== 'all' || searchTerm) && (
+              {/* Clear filters */}
+              {hasActiveFilter && (
                 <button
                   onClick={() => { setPositionFilter('all'); setStatusFilter('all'); setSearchTerm(''); setPage(0); }}
-                  className="px-3 py-2 bg-zinc-900 text-white rounded-xl text-xs font-bold hover:bg-zinc-700 transition-colors"
+                  className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-all"
                 >
-                  Clear filters
+                  Clear
                 </button>
               )}
             </div>
           </div>
 
-          {/* Result count */}
-          {!loading && (
-            <p className="text-xs text-zinc-400 font-medium -mt-1">
-              {filteredAndSortedAthletes.length} of {athletes.length} athletes
-            </p>
-          )}
-
+          {/* Table */}
           {loading ? (
             <SkeletonTable />
           ) : (
-            <div className="bg-white rounded-3xl border border-zinc-200 shadow-sm overflow-hidden">
+            <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden shadow-xl">
               <table className="w-full text-left border-collapse">
+
+                {/* ── Header ─────────────────────────────────────────────── */}
                 <thead>
-                  <tr className="bg-zinc-50 border-b border-zinc-100">
-                    {/* Band # — not sortable */}
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">#</th>
-
-                    {/* Athlete — sortable */}
-                    <th className="px-6 py-4">
-                      <button
+                  <tr className="bg-zinc-950 border-b border-zinc-800">
+                    <th className="px-5 py-3.5 text-[10px] font-black uppercase tracking-widest text-zinc-600">
+                      #
+                    </th>
+                    <th className="px-5 py-3.5">
+                      <SortHeader
+                        label="Athlete"
+                        sortKey="name"
+                        active={sortConfig.key === 'name'}
+                        indicator={sortIndicator('name')}
                         onClick={() => handleSort('name')}
-                        className={`flex items-center gap-1 text-xs font-bold uppercase tracking-wider transition-colors hover:text-zinc-900 ${
-                          sortConfig.key === 'name' ? 'text-zinc-900' : 'text-zinc-500'
-                        }`}
-                      >
-                        Athlete
-                        <span className={sortConfig.key === 'name' ? 'text-zinc-900' : 'text-zinc-300'}>
-                          {sortIndicator('name')}
-                        </span>
-                      </button>
+                      />
                     </th>
-
-                    {/* Position — not sortable (use dropdown for position filtering) */}
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Position</th>
-
-                    {/* Progress — sortable */}
-                    <th className="px-6 py-4">
-                      <button
+                    <th className="px-5 py-3.5 text-[10px] font-black uppercase tracking-widest text-zinc-600">
+                      Pos
+                    </th>
+                    <th className="px-5 py-3.5">
+                      <SortHeader
+                        label="Progress"
+                        sortKey="progress"
+                        active={sortConfig.key === 'progress'}
+                        indicator={sortIndicator('progress')}
                         onClick={() => handleSort('progress')}
-                        className={`flex items-center gap-1 text-xs font-bold uppercase tracking-wider transition-colors hover:text-zinc-900 ${
-                          sortConfig.key === 'progress' ? 'text-zinc-900' : 'text-zinc-500'
-                        }`}
-                      >
-                        Progress
-                        <span className={sortConfig.key === 'progress' ? 'text-zinc-900' : 'text-zinc-300'}>
-                          {sortIndicator('progress')}
-                        </span>
-                      </button>
+                      />
                     </th>
-
-                    {/* Score — sortable (default active) */}
-                    <th className="px-6 py-4">
-                      <button
+                    <th className="px-5 py-3.5">
+                      <SortHeader
+                        label="Score"
+                        sortKey="score"
+                        active={sortConfig.key === 'score'}
+                        indicator={sortIndicator('score')}
                         onClick={() => handleSort('score')}
-                        className={`flex items-center gap-1 text-xs font-bold uppercase tracking-wider transition-colors hover:text-zinc-900 ${
-                          sortConfig.key === 'score' ? 'text-zinc-900' : 'text-zinc-500'
-                        }`}
-                      >
-                        Score
-                        <span className={sortConfig.key === 'score' ? 'text-zinc-900' : 'text-zinc-300'}>
-                          {sortIndicator('score')}
-                        </span>
-                      </button>
+                      />
                     </th>
-
-                    {/* Status — not sortable (use dropdown for status filtering) */}
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Status</th>
+                    <th className="px-5 py-3.5 text-[10px] font-black uppercase tracking-widest text-zinc-600">
+                      Status
+                    </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-100">
+
+                {/* ── Rows ───────────────────────────────────────────────── */}
+                <tbody className="divide-y divide-zinc-800/60">
                   {paginatedAthletes.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-6 py-12 text-center text-sm text-zinc-400">
-                        No athletes match the current filters.
+                      <td colSpan={6} className="px-6 py-16 text-center">
+                        <p className="text-sm text-zinc-600 font-medium">No athletes match the current filters.</p>
                       </td>
                     </tr>
                   ) : (
-                    paginatedAthletes.map(athlete => {
+                    paginatedAthletes.map((athlete, idx) => {
                       const score  = avgPercentile(athlete);
                       const status = athleteStatus(athlete);
+                      const count  = athlete.results?.length || 0;
                       return (
-                        <tr key={athlete.id} className="hover:bg-zinc-50 transition-colors">
-                          <td className="px-6 py-4 font-black text-zinc-400">
-                            {athlete.bands?.display_number || '--'}
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="font-bold">{athlete.first_name} {athlete.last_name}</div>
-                            <div className="text-xs text-zinc-400">{athlete.parent_email}</div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className="px-2 py-1 bg-zinc-100 rounded text-xs font-bold">
-                              {athlete.position || 'N/A'}
+                        <tr
+                          key={athlete.id}
+                          className="hover:bg-[#c8a200]/[0.04] transition-colors group"
+                        >
+                          {/* Band # */}
+                          <td className="px-5 py-4">
+                            <span className="font-mono font-black text-base text-zinc-500 group-hover:text-zinc-400 tabular-nums">
+                              {athlete.bands?.display_number || '--'}
                             </span>
                           </td>
-                          <td className="px-6 py-4">
+
+                          {/* Athlete name + email */}
+                          <td className="px-5 py-4">
+                            <div className="font-bold text-sm text-white">{athlete.first_name} {athlete.last_name}</div>
+                            <div className="font-mono text-[10px] text-zinc-600 mt-0.5">{athlete.parent_email}</div>
+                          </td>
+
+                          {/* Position */}
+                          <td className="px-5 py-4">
+                            <span className="px-2 py-0.5 bg-zinc-800 rounded text-[10px] font-black uppercase tracking-wider text-zinc-400">
+                              {athlete.position || '—'}
+                            </span>
+                          </td>
+
+                          {/* Progress bar + x/5 */}
+                          <td className="px-5 py-4">
                             <div className="flex items-center gap-3">
-                              <div className="flex-1 h-2 bg-zinc-100 rounded-full overflow-hidden min-w-[60px]">
+                              <div className="w-16 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
                                 <div
-                                  className="h-full bg-emerald-500 rounded-full"
-                                  style={{ width: `${Math.min((athlete.results?.length || 0) / 5 * 100, 100)}%` }}
+                                  className={`h-full rounded-full transition-all ${progressBarColor(count)}`}
+                                  style={{ width: `${Math.min(count / 5 * 100, 100)}%` }}
                                 />
                               </div>
-                              <span className="text-xs font-bold tabular-nums">
-                                {athlete.results?.length || 0}/5
+                              <span className="font-mono text-[11px] font-bold tabular-nums text-zinc-500">
+                                {count}<span className="text-zinc-700">/5</span>
                               </span>
                             </div>
                           </td>
-                          <td className="px-6 py-4">
+
+                          {/* Score */}
+                          <td className="px-5 py-4">
                             {score !== null ? (
-                              <span className="text-sm font-black text-zinc-900 tabular-nums">
-                                {score}<span className="text-xs font-normal text-zinc-400">th</span>
+                              <span className={`font-mono font-black text-lg tabular-nums ${scoreColor(score)}`}>
+                                {score}<span className="text-[11px] font-normal text-zinc-600">th</span>
                               </span>
                             ) : (
-                              <span className="text-xs text-zinc-300 font-medium">—</span>
+                              <span className="font-mono text-zinc-700 text-sm">—</span>
                             )}
                           </td>
-                          <td className="px-6 py-4">
+
+                          {/* Status */}
+                          <td className="px-5 py-4">
                             {status === 'completed' ? (
-                              <span className="text-emerald-600 flex items-center gap-1 text-xs font-bold">
-                                <CheckCircle className="w-3 h-3" /> Ready
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-950/60 border border-emerald-800/50 rounded-full text-[10px] font-black uppercase tracking-wider text-emerald-400">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.8)]" />
+                                Ready
                               </span>
                             ) : status === 'in_progress' ? (
-                              <span className="text-amber-600 flex items-center gap-1 text-xs font-bold">
-                                <Activity className="w-3 h-3" /> Testing
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-950/60 border border-amber-800/50 rounded-full text-[10px] font-black uppercase tracking-wider text-amber-400">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shadow-[0_0_4px_rgba(251,191,36,0.8)]" />
+                                Testing
                               </span>
                             ) : (
-                              <span className="text-zinc-400 flex items-center gap-1 text-xs font-bold">
-                                <span className="w-3 h-3 rounded-full border-2 border-zinc-300 inline-block" /> Waiting
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-zinc-800/60 border border-zinc-700/50 rounded-full text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                                <span className="w-1.5 h-1.5 rounded-full bg-zinc-600" />
+                                Waiting
                               </span>
                             )}
                           </td>
@@ -583,34 +609,68 @@ export default function AdminDashboard() {
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between px-2">
-              <p className="text-xs text-zinc-500 font-medium">
-                Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, filteredAndSortedAthletes.length)} of {filteredAndSortedAthletes.length} athletes
+            <div className="flex items-center justify-between px-1">
+              <p className="font-mono text-[10px] text-zinc-600">
+                {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, filteredAndSortedAthletes.length)}
+                <span className="text-zinc-700"> of {filteredAndSortedAthletes.length}</span>
               </p>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setPage(p => Math.max(0, p - 1))}
                   disabled={page === 0}
-                  className="p-2 bg-white border border-zinc-200 rounded-lg disabled:opacity-30 hover:bg-zinc-50 transition-all"
+                  className="p-2 bg-zinc-900 border border-zinc-800 rounded-lg disabled:opacity-20 hover:bg-zinc-800 hover:border-zinc-700 transition-all text-zinc-400"
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
-                <span className="text-xs font-bold text-zinc-600">
-                  {page + 1} / {totalPages}
+                <span className="font-mono text-[11px] font-bold text-zinc-500 tabular-nums">
+                  {page + 1}<span className="text-zinc-700">/{totalPages}</span>
                 </span>
                 <button
                   onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
                   disabled={page === totalPages - 1}
-                  className="p-2 bg-white border border-zinc-200 rounded-lg disabled:opacity-30 hover:bg-zinc-50 transition-all"
+                  className="p-2 bg-zinc-900 border border-zinc-800 rounded-lg disabled:opacity-20 hover:bg-zinc-800 hover:border-zinc-700 transition-all text-zinc-400"
                 >
                   <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
             </div>
           )}
-        </div>
+
+        </section>
       </main>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SortHeader — sortable column header button
+// ---------------------------------------------------------------------------
+
+function SortHeader({
+  label,
+  sortKey,
+  active,
+  indicator,
+  onClick,
+}: {
+  label: string;
+  sortKey: SortKey;
+  active: boolean;
+  indicator: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-1 text-[10px] font-black uppercase tracking-widest transition-colors ${
+        active ? 'text-[#c8a200]' : 'text-zinc-600 hover:text-zinc-300'
+      }`}
+    >
+      {label}
+      <span className={`font-mono text-[9px] ${active ? 'text-[#c8a200]' : 'text-zinc-700'}`}>
+        {indicator}
+      </span>
+    </button>
   );
 }
 
@@ -638,39 +698,53 @@ function CoachPortalLink() {
   return (
     <Link
       to={`/coach/${eventId}`}
-      className="flex items-center gap-2 px-4 py-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl text-sm font-bold text-amber-800 transition-colors"
+      className="flex items-center gap-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 hover:border-zinc-600 rounded-lg text-xs font-bold text-zinc-300 hover:text-white transition-all"
     >
-      <Trophy className="w-4 h-4" />
+      <Trophy className="w-3.5 h-3.5 text-[#c8a200]" />
       Coach Portal
     </Link>
   );
 }
 
 // ---------------------------------------------------------------------------
-// StatCard (unchanged)
+// StatCard — premium dark metric card
 // ---------------------------------------------------------------------------
 
-function StatCard({ icon, label, value, color }: {
-  icon:  React.ReactNode;
-  label: string;
-  value: number;
-  color: string;
-}) {
-  const colors: Record<string, string> = {
-    blue:    'bg-blue-50 text-blue-600',
-    purple:  'bg-purple-50 text-purple-600',
-    emerald: 'bg-emerald-50 text-emerald-600',
-    amber:   'bg-amber-50 text-amber-600',
-  };
+type AccentKey = 'gold' | 'violet' | 'emerald' | 'amber';
 
+const ACCENT_TOP: Record<AccentKey, string> = {
+  gold:    'bg-[#c8a200]',
+  violet:  'bg-violet-500',
+  emerald: 'bg-emerald-500',
+  amber:   'bg-amber-500',
+};
+
+const ACCENT_ICON: Record<AccentKey, string> = {
+  gold:    'text-[#c8a200]',
+  violet:  'text-violet-400',
+  emerald: 'text-emerald-400',
+  amber:   'text-amber-400',
+};
+
+function StatCard({ icon, label, value, accent }: {
+  icon:   React.ReactNode;
+  label:  string;
+  value:  number;
+  accent: AccentKey;
+}) {
   return (
-    <div className="bg-white p-6 rounded-3xl border border-zinc-200 shadow-sm space-y-4">
-      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${colors[color]}`}>
-        {React.cloneElement(icon as any, { className: 'w-5 h-5' })}
-      </div>
-      <div>
-        <div className="text-3xl font-black tracking-tight">{value}</div>
-        <div className="text-xs font-bold uppercase tracking-wider text-zinc-400">{label}</div>
+    <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden shadow-md">
+      <div className={`h-0.5 ${ACCENT_TOP[accent]}`} />
+      <div className="p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-[9px] font-black uppercase tracking-widest text-zinc-600">{label}</p>
+          <span className={`${ACCENT_ICON[accent]} opacity-70`}>
+            {React.cloneElement(icon as any, { className: 'w-4 h-4' })}
+          </span>
+        </div>
+        <p className="font-mono font-black text-4xl text-white tabular-nums leading-none">
+          {value.toLocaleString()}
+        </p>
       </div>
     </div>
   );

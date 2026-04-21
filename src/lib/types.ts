@@ -30,6 +30,19 @@ export const resultSubmissionSchema = z.object({
   meta: z.record(z.string(), z.any()).optional()
 });
 
+// ── Plan / billing types ──────────────────────────────────────────────────────
+export type ActivePlan = 'athlete_pro' | 'enterprise' | null;
+
+export interface Profile {
+  id: string;
+  user_id: string;
+  display_name: string | null;
+  full_name: string | null;
+  role: string;
+  organization_id: string | null;
+  active_plan: ActivePlan;
+}
+
 // Database Types (Simplified for now, in a real app these would be generated)
 export interface Athlete {
   id: string;

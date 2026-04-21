@@ -142,9 +142,16 @@ export default function Home() {
         </div>
       </main>
 
-      <footer className="pb-8 text-center text-zinc-400 text-sm flex items-center justify-center gap-2">
-        <img src={BRAND.logo} alt="" className="w-4 h-4 opacity-50" />
-        &copy; 2026 Core Elite Network. All rights reserved.
+      <footer className="pb-8 text-center space-y-3">
+        <div className="flex items-center justify-center gap-6 text-xs font-bold">
+          <Link to="/pricing" className="text-[#c8a200] hover:underline uppercase tracking-wider">Pricing</Link>
+          <Link to="/enterprise" className="text-zinc-500 hover:text-zinc-900 uppercase tracking-wider">Enterprise</Link>
+          <Link to="/lookup" className="text-zinc-500 hover:text-zinc-900 uppercase tracking-wider">Athlete Lookup</Link>
+        </div>
+        <div className="flex items-center justify-center gap-2 text-zinc-400 text-xs">
+          <img src={BRAND.logo} alt="" className="w-4 h-4 opacity-50" />
+          &copy; 2026 Core Elite Network. All rights reserved.
+        </div>
       </footer>
     </div>
   );

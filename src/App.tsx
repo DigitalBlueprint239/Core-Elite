@@ -27,6 +27,7 @@ const ForgotPassword   = lazy(() => import('./pages/ForgotPassword'));
 const UpdatePassword   = lazy(() => import('./pages/UpdatePassword'));
 const AuthCallback     = lazy(() => import('./pages/auth/AuthCallback'));
 const Lookup = lazy(() => import('./pages/Lookup'));
+const Pricing = lazy(() => import('./pages/Pricing'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 
 // Enterprise portal — marketing/sales site (unauthenticated)
@@ -97,6 +98,7 @@ export default function App() {
                 </RouteGuard>
               } />
               <Route path="/lookup" element={<Lookup />} />
+              <Route path="/pricing" element={<Pricing />} />
 
               {/* ── Enterprise Portal (/enterprise/*) ─────────────────
                   Nested under EnterpriseLayout (Outlet). Completely

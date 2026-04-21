@@ -12,16 +12,17 @@ import {
   CheckCircle2,
   Clock,
   Download,
-  ChevronRight,
   User,
   MapPin,
-  Calendar,
   ArrowLeft,
   Share2,
   Copy,
-  ExternalLink
+  ExternalLink,
+  ShieldCheck,
 } from 'lucide-react';
 import { SkeletonHeader, SkeletonResultCard } from '../components/Skeleton';
+import { PlanGate } from '../components/PlanGate';
+import type { ActivePlan } from '../lib/types';
 
 export default function ParentPortal() {
   const { token } = useParams();
@@ -29,6 +30,7 @@ export default function ParentPortal() {
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [activePlan, setActivePlan] = useState<ActivePlan>(null);
   const { org } = useOrganization(data?.event?.id);
 
   useEffect(() => {
@@ -61,8 +63,18 @@ export default function ParentPortal() {
           athlete: athleteRes.data,
           event: eventRes.data,
           results: resultsRes.data || [],
-          report: reportRes.data
+          report: reportRes.data,
         });
+
+        // Check athlete's Athlete Pro plan status via recruiting_profile_id
+        if (athleteRes.data.recruiting_profile_id) {
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('active_plan')
+            .eq('user_id', athleteRes.data.recruiting_profile_id)
+            .maybeSingle();
+          setActivePlan((profileData?.active_plan as ActivePlan) ?? null);
+        }
       } else {
         setError('Could not load athlete data.');
       }
@@ -108,6 +120,7 @@ export default function ParentPortal() {
     </div>
   );
 
+  const isPro = activePlan === 'athlete_pro';
   const requiredCount = data.event.required_drills?.length || 5;
   const completedCount = data.results.length;
   const progress = Math.min((completedCount / requiredCount) * 100, 100);
@@ -198,6 +211,40 @@ export default function ParentPortal() {
           )}
         </section>
 
+        {/* Core Elite Verified Badge */}
+        <section className="bg-white p-6 rounded-3xl border border-zinc-200 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${isPro ? 'bg-[#c8a200]/10' : 'bg-zinc-100'}`}>
+                <ShieldCheck className={`w-6 h-6 ${isPro ? 'text-[#c8a200]' : 'text-zinc-300'}`} />
+              </div>
+              <div>
+                <h3 className="font-bold flex items-center gap-2">
+                  Core Elite Verified
+                  {isPro && (
+                    <span className="px-2 py-0.5 bg-[#c8a200] text-zinc-900 text-[9px] font-black uppercase tracking-widest rounded-full">
+                      Active
+                    </span>
+                  )}
+                </h3>
+                <p className="text-xs text-zinc-500">
+                  {isPro
+                    ? 'Recruiting profile is live and discoverable by D1 scouts.'
+                    : 'Upgrade to Athlete Pro to publish your scout-facing profile.'}
+                </p>
+              </div>
+            </div>
+            {!isPro && (
+              <a
+                href="/pricing"
+                className="shrink-0 px-4 py-2 bg-zinc-900 text-white text-xs font-black uppercase tracking-wider rounded-xl hover:bg-zinc-700 transition-colors"
+              >
+                Upgrade — $14.99/mo
+              </a>
+            )}
+          </div>
+        </section>
+
         {/* Results List */}
         <section className="space-y-4">
           <h2 className="text-lg font-bold flex items-center gap-2">
@@ -227,9 +274,11 @@ export default function ParentPortal() {
                     </div>
                     <div className="flex flex-col items-end gap-1">
                       {pct !== null && grade && (
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wide ${gradeColor(grade)}`}>
-                          {pct}th — {grade}
-                        </span>
+                        <PlanGate active={isPro}>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wide ${gradeColor(grade)}`}>
+                            {pct}th — {grade}
+                          </span>
+                        </PlanGate>
                       )}
                       <div className="text-[10px] font-bold text-zinc-400 uppercase">
                         {new Date(res.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -276,7 +325,7 @@ export default function ParentPortal() {
 
         <footer className="pt-4 text-center">
           <div className="inline-flex items-center gap-2 px-4 py-2 bg-zinc-100 rounded-full text-[10px] font-bold uppercase tracking-widest text-zinc-500">
-            <Trophy className="w-3 h-3" /> Core Elite Combine 2026
+            <Trophy className="w-3 h-3" /> Core Elite Network
           </div>
         </footer>
       </main>
