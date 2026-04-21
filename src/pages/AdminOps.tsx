@@ -30,9 +30,10 @@ import { WaiversTab } from './admin-ops/WaiversTab';
 import { IncidentsTab } from './admin-ops/IncidentsTab';
 import { AuditTab } from './admin-ops/AuditTab';
 import { AthletesTab } from './admin-ops/AthletesTab';
+import EnterpriseImporter from '../components/admin/EnterpriseImporter';
 
 export default function AdminOps() {
-  const [activeTab, setActiveTab] = useState<'events' | 'stations' | 'drills' | 'bands' | 'athletes' | 'results' | 'waivers' | 'incidents' | 'audit'>('events');
+  const [activeTab, setActiveTab] = useState<'events' | 'stations' | 'drills' | 'bands' | 'athletes' | 'results' | 'waivers' | 'incidents' | 'audit' | 'import'>('events');
   const [activeEvent, setActiveEvent] = useState<any>(null);
   const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -190,6 +191,12 @@ export default function AdminOps() {
             icon={<ClipboardList />}
             label="Audit Log"
           />
+          <NavButton
+            active={activeTab === 'import'}
+            onClick={() => setActiveTab('import')}
+            icon={<Archive />}
+            label="CSV Import"
+          />
 
           <div className="pt-8 space-y-4">
             <h3 className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 px-4">Event Day Checklist</h3>
@@ -233,6 +240,9 @@ export default function AdminOps() {
             )}
             {activeTab === 'audit' && (
               <AuditTab eventId={activeEvent?.id} />
+            )}
+            {activeTab === 'import' && (
+              <EnterpriseImporter />
             )}
           </AnimatePresence>
         </main>
