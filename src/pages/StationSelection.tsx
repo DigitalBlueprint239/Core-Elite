@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { LayoutGrid, MapPin, ChevronRight, LogOut, Wifi, WifiOff, AlertCircle } from 'lucide-react';
+import { LayoutGrid, MapPin, ChevronRight, LogOut, Wifi, WifiOff } from 'lucide-react';
 import { motion } from 'motion/react';
+import HardwareStandby from '../components/HardwareStandby';
 
 export default function StationSelection() {
   const [stations, setStations] = useState<any[]>([]);
@@ -65,13 +66,20 @@ export default function StationSelection() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-zinc-50">
+      <div className="min-h-screen flex items-center justify-center bg-zinc-950">
         <div className="text-center space-y-4">
-          <div className="w-12 h-12 border-4 border-zinc-900 border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <p className="text-zinc-500 font-medium">Loading stations...</p>
+          <div className="w-10 h-10 border-2 border-zinc-700 border-t-[#c8a200] rounded-full animate-spin mx-auto" />
+          <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-600 animate-pulse">
+            QUERYING LIVE EVENT...
+          </p>
         </div>
       </div>
     );
+  }
+
+  // No live event — render the cinematic hardware standby terminal
+  if (error === 'No live event found.') {
+    return <HardwareStandby onRetry={() => window.location.reload()} />;
   }
 
   return (
@@ -106,15 +114,16 @@ export default function StationSelection() {
 
       <main className="max-w-4xl mx-auto px-4 py-8">
         {error ? (
-          <div className="bg-red-50 border border-red-100 p-6 rounded-3xl text-center space-y-4">
-            <AlertCircle className="w-12 h-12 text-red-600 mx-auto" />
-            <h2 className="text-xl font-bold text-red-900">Configuration Error</h2>
-            <p className="text-red-700">{error}</p>
-            <button 
+          <div className="bg-zinc-900 border border-red-900/40 p-6 rounded-2xl text-center space-y-4">
+            <div className="w-10 h-10 rounded-full bg-red-950/50 border border-red-800/50 flex items-center justify-center mx-auto">
+              <span className="font-mono text-red-400 text-xs font-black">ERR</span>
+            </div>
+            <p className="font-mono text-sm text-red-400 font-bold">{error}</p>
+            <button
               onClick={() => window.location.reload()}
-              className="px-6 py-2 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-all"
+              className="px-6 py-2.5 bg-zinc-800 border border-zinc-700 hover:border-zinc-600 text-zinc-300 rounded-lg font-mono text-xs font-bold uppercase tracking-widest transition-all"
             >
-              Retry
+              [ RETRY ]
             </button>
           </div>
         ) : stations.length === 0 ? (
