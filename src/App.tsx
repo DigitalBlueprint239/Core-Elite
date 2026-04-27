@@ -3,12 +3,31 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { Suspense, lazy } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import React, { Suspense, lazy, useEffect, useRef } from 'react';
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { SyncIndicator } from './components/SyncIndicator';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { RouteGuard } from './components/RouteGuard';
 import { ThemeProvider } from './components/ThemeProvider';
+import { reportNav } from './lib/apm';
+
+// APM route-timing beacon — mounts once inside <BrowserRouter> and fires a
+// reportNav() on every pathname change. The first mount reports 0ms so the
+// APM pipeline can distinguish initial loads (see LCP) from SPA transitions.
+function RouteTiming() {
+  const location = useLocation();
+  const startRef = useRef<number>(performance.now());
+  const pathRef  = useRef<string>(location.pathname);
+
+  useEffect(() => {
+    const now = performance.now();
+    reportNav(pathRef.current, now - startRef.current);
+    startRef.current = now;
+    pathRef.current  = location.pathname;
+  }, [location.pathname]);
+
+  return null;
+}
 
 // Lazy load routes
 const Home = lazy(() => import('./pages/Home'));
@@ -30,6 +49,11 @@ const Lookup = lazy(() => import('./pages/Lookup'));
 const Pricing = lazy(() => import('./pages/Pricing'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 
+// Scout View — high-density leaderboard + per-athlete deep-dive.
+// Authenticated (RouteGuard, no requireAdmin — scouts are not admins).
+const ScoutLeaderboard       = lazy(() => import('./pages/scout/Leaderboard'));
+const ScoutAthleteDetail     = lazy(() => import('./pages/scout/AthleteDetail'));
+
 // Enterprise portal — marketing/sales site (unauthenticated)
 const EnterpriseLayout       = lazy(() => import('./layouts/EnterpriseLayout'));
 const CommissionerOverview   = lazy(() => import('./pages/enterprise/CommissionerOverview'));
@@ -49,6 +73,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <BrowserRouter>
+        <RouteTiming />
         <ThemeProvider>
         <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900">
           <Suspense fallback={
@@ -126,6 +151,25 @@ export default function App() {
                 <Route path="command-center" element={<LiveCommandCenter />} />
                 <Route path="import"         element={<VendorImport />} />
               </Route>
+
+              {/* ── Scout View (/scout/*) ──────────────────────────────
+                  High-density leaderboard + per-athlete deep-dive.
+                  Renders OUTSIDE LeagueAdminLayout — the scout pages
+                  ship their own dark-mode shell. Wrapped in RouteGuard
+                  (auth required, no requireAdmin — scouts are not
+                  admins) so unauthenticated traffic can't see the
+                  full athletic record.
+              ──────────────────────────────────────────────────────── */}
+              <Route path="/scout/leaderboard" element={
+                <RouteGuard>
+                  <ScoutLeaderboard />
+                </RouteGuard>
+              } />
+              <Route path="/scout/athletes/:id" element={
+                <RouteGuard>
+                  <ScoutAthleteDetail />
+                </RouteGuard>
+              } />
 
               <Route path="*" element={<NotFound />} />
             </Routes>

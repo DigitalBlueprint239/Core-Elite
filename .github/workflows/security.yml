@@ -1,0 +1,123 @@
+# =============================================================================
+# Core Elite — security.yml
+# Mission V: Compliance Sweep — dependency vulnerability gate
+# =============================================================================
+#
+# This workflow is the compliance gate that blocks vulnerable dependencies
+# from reaching `main`. It runs on every pull request that targets `main`
+# and on a weekly schedule so freshly-disclosed CVEs are caught even when
+# no PRs are open.
+#
+# Two independent scanners run in parallel so a single false-negative
+# does not let a vuln slip through:
+#
+#   1. `npm audit --audit-level=high`  — the Node registry's own advisory
+#      database. Fast, zero external dependencies. Failure here blocks merge.
+#
+#   2. Trivy (aquasecurity/trivy-action)  — cross-ecosystem CVE scanner
+#      backed by NVD + GHSA + vendor feeds. Catches OS/system advisories
+#      that npm audit doesn't know about (e.g. transitive native deps).
+#
+# Policy:
+#   - `high` or `critical` findings  → job fails, merge blocked.
+#   - `moderate`/`low`               → logged to the PR check summary but
+#                                      do not block merge.
+#
+# Secrets:
+#   - No secrets are required. Both scanners hit public advisory databases.
+# =============================================================================
+
+name: Security
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    # Weekly sweep: Mondays 07:00 UTC = 02:00 CT (before the team is online).
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+
+# A new push to the same PR should cancel the in-flight run — no sense
+# burning minutes scanning an out-of-date commit.
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Principle-of-least-privilege: both jobs only need to read code and write
+# to the Checks API (status) + Security tab (SARIF). No package writes.
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. npm audit — blocks merge on high/critical vulnerabilities
+  # ---------------------------------------------------------------------------
+  npm-audit:
+    name: npm audit (high+)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      # `npm ci` guarantees we audit exactly what package-lock.json pins,
+      # not whatever `npm install` would resolve today. Drift between PRs
+      # would otherwise produce inconsistent audit results.
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      # The --omit=dev flag scopes the audit to shipped runtime deps — we
+      # accept moderate-risk devDependencies because they never reach prod.
+      # --audit-level=high is the blocking threshold; the command exits
+      # non-zero on any high or critical advisory.
+      - name: npm audit (production)
+        run: npm audit --audit-level=high --omit=dev
+
+      # Informational scan over the full tree (includes devDependencies).
+      # Never blocks — just surfaces context in the logs so maintainers
+      # see tooling CVEs without the compliance gate failing on them.
+      - name: npm audit (dev, informational)
+        if: always()
+        run: npm audit --audit-level=low || true
+
+  # ---------------------------------------------------------------------------
+  # 2. Trivy — cross-ecosystem scanner, uploads SARIF to GitHub Security tab
+  # ---------------------------------------------------------------------------
+  trivy:
+    name: Trivy filesystem scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Scans the whole repo tree: package-lock.json, Dockerfiles, IaC,
+      # etc. severity=HIGH,CRITICAL matches our npm-audit blocking policy.
+      # exit-code=1 fails the step when anything at that level is found.
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          severity: "HIGH,CRITICAL"
+          exit-code: "1"
+          ignore-unfixed: true         # advisories without a fix don't block
+          format: "sarif"
+          output: "trivy-results.sarif"
+
+      # Upload findings to the GitHub Security tab even when the step above
+      # failed — reviewers need the detail, not just a red X.
+      - name: Upload Trivy SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: "trivy-results.sarif"
+          category: "trivy-fs"

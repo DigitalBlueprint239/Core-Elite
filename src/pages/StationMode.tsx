@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Station, Athlete } from '../lib/types';
 import { QRScanner } from '../components/QRScanner';
-import { addToOutbox, getCachedAthlete, cacheAthlete, saveStationQueue, loadStationQueue } from '../lib/offline';
+import { addToOutbox, getCachedAthlete, cacheAthlete, saveStationQueue, loadStationQueue, ResultOutboxPayload } from '../lib/offline';
 import { seedOverridePin, verifyOverridePin, isOverridePinSeeded } from '../lib/overridePin';
 import { useOfflineSync } from '../hooks/useOfflineSync';
 import { motion, AnimatePresence } from 'motion/react';
@@ -90,7 +90,7 @@ export default function StationMode() {
   const [scoutReviewPending, setScoutReviewPending] = useState<{
     flaggedValue: number;
     reason: string;
-    payload: any;
+    payload: ResultOutboxPayload;
     clientResultId: string;
   } | null>(null);
 
@@ -358,7 +358,7 @@ export default function StationMode() {
     // Gate 4 — extraordinary_result intercept (fail-soft: flag for review, do not discard).
     if (gateCheck.valid === false && gateCheck.gate === 'extraordinary_result') {
       const clientResultId = uuidv4();
-      const payload = {
+      const payload: ResultOutboxPayload = {
         client_result_id: clientResultId,
         event_id:         station.event_id,
         athlete_id:       athlete.athlete_id,
@@ -375,6 +375,9 @@ export default function StationMode() {
           device_id:             getDeviceId(),
         },
         recorded_at: new Date().toISOString(),
+        // Mission "p_source_type": staff is keying this in. Hardware-verified
+        // entries arrive through the BLE path with source_type: 'live_ble'.
+        source_type: 'manual',
       };
       setScoutReviewPending({ flaggedValue: val, reason: gateCheck.reason, payload, clientResultId });
       setSubmitting(false);
@@ -384,7 +387,7 @@ export default function StationMode() {
     const clientResultId = uuidv4();
     // Generate HLC once per rep. Never call tick() twice for the same submission.
     const hlcTimestamp = tick();
-    const payload = {
+    const payload: ResultOutboxPayload = {
       client_result_id: clientResultId,
       event_id:         station.event_id,
       athlete_id:       athlete.athlete_id,
@@ -402,6 +405,8 @@ export default function StationMode() {
         hlc_timestamp:  hlcTimestamp,
       },
       recorded_at: new Date().toISOString(),
+      // Mission "p_source_type": staff key-entry through StationMode.
+      source_type: 'manual',
     };
 
     try {
@@ -550,7 +555,7 @@ export default function StationMode() {
       const clientResultId = uuidv4();
       const hlcTimestamp = tick();
 
-      const overridePayload = {
+      const overridePayload: ResultOutboxPayload = {
         client_result_id: clientResultId,
         event_id:         station.event_id,
         athlete_id:       athlete.athlete_id,
@@ -568,6 +573,9 @@ export default function StationMode() {
           hlc_timestamp:   hlcTimestamp,
         },
         recorded_at: new Date().toISOString(),
+        // Mission "p_source_type": admin override is still hand-typed —
+        // the override flag lives in meta, not in source_type.
+        source_type: 'manual',
       };
 
       await addToOutbox({
@@ -660,7 +668,7 @@ export default function StationMode() {
     }
 
     const laneHlcTimestamp = tick();
-    const payload = {
+    const payload: ResultOutboxPayload = {
       client_result_id: uuidv4(),
       event_id:         station.event_id,
       athlete_id:       item.athlete_id,
@@ -672,6 +680,8 @@ export default function StationMode() {
       attempt_number:   1,
       meta: { device_id: getDeviceId(), hlc_timestamp: laneHlcTimestamp },
       recorded_at: new Date().toISOString(),
+      // Mission "p_source_type": lane mode is also a staff hand-entry path.
+      source_type: 'manual',
     };
 
     await addToOutbox({

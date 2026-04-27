@@ -7,6 +7,7 @@ import {
   FileText,
   Loader2,
   Shield,
+  Sparkles,
   Upload,
   X,
 } from 'lucide-react';
@@ -162,6 +163,12 @@ export default function EnterpriseImporter() {
   const [importResult,  setImportResult]  = useState<ImportResult | null>(null);
   const [errorMsg,      setErrorMsg]      = useState('');
 
+  // Mission Z — AI Data Janitor
+  const [cleanseRaw,      setCleanseRaw]      = useState('');
+  const [cleansing,       setCleansing]       = useState(false);
+  const [cleanseError,    setCleanseError]    = useState('');
+  const [cleanseWarnings, setCleanseWarnings] = useState<string[]>([]);
+
   const logRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -221,6 +228,87 @@ export default function EnterpriseImporter() {
     const file = e.target.files?.[0];
     if (file) processFile(file);
   }, [processFile]);
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Mission Z — AI Cleanse pipeline
+  //
+  // Posts the messy paste to the `roster-janitor` Edge Function, receives
+  // a strict JSON array of normalized rows, then converts those rows back
+  // into the importer's RawRow + headers shape so the existing column-
+  // mapping + import logic takes over without modification.
+  // ───────────────────────────────────────────────────────────────────────
+  const handleCleanse = useCallback(async () => {
+    const raw = cleanseRaw.trim();
+    if (!raw) {
+      setCleanseError('Paste a roster first.');
+      return;
+    }
+    setCleansing(true);
+    setCleanseError('');
+    setCleanseWarnings([]);
+    addLog('AI Cleanse: dispatching to roster-janitor edge function…');
+
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        'roster-janitor',
+        { body: { raw } },
+      );
+
+      if (error) throw new Error(error.message ?? 'Edge function returned an error.');
+
+      const payload = data as {
+        rows:     Array<Record<string, string | number | null>>;
+        warnings: string[];
+        usage?:   Record<string, number>;
+        model?:   string;
+      };
+
+      if (!payload?.rows || !Array.isArray(payload.rows) || payload.rows.length === 0) {
+        throw new Error('No rows returned from cleanse — paste may not contain athlete data.');
+      }
+
+      // Project the structured payload back into the importer's expected
+      // RawRow[] / headers[] shape. Header names are chosen so the existing
+      // detectColMap() auto-maps them on the first try.
+      const canonicalHeaders = ['first_name', 'last_name', 'position', 'forty', 'height_in', 'weight_lb'];
+      const projected: RawRow[] = payload.rows.map((r) => {
+        const out: RawRow = {};
+        for (const h of canonicalHeaders) {
+          const v = r[h];
+          out[h] = v === null || v === undefined ? '' : String(v);
+        }
+        return out;
+      });
+
+      setHeaders(canonicalHeaders);
+      setRawRows(projected);
+      setColMap(detectColMap(canonicalHeaders));
+      setFileName('ai-cleansed-roster.csv');
+      setLogs([]);
+      setPhase('mapped');
+      setCleanseWarnings(payload.warnings ?? []);
+
+      addLog(
+        `Cleansed ${payload.rows.length} row(s) via ${payload.model ?? 'claude'}.`,
+        'ok',
+      );
+      if (payload.usage) {
+        const cached = payload.usage.cache_read_input_tokens ?? 0;
+        addLog(
+          `tokens: in=${payload.usage.input_tokens} out=${payload.usage.output_tokens} cached=${cached}`,
+        );
+      }
+      if (payload.warnings?.length) {
+        addLog(`${payload.warnings.length} parse warning(s) — review the table.`, 'warn');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown cleanse failure.';
+      setCleanseError(msg);
+      addLog(`AI Cleanse failed: ${msg}`, 'err');
+    } finally {
+      setCleansing(false);
+    }
+  }, [cleanseRaw, addLog]);
 
   const handleImport = useCallback(async () => {
     if (!colMap || !selectedEvent || rawRows.length === 0) return;
@@ -294,6 +382,9 @@ export default function EnterpriseImporter() {
     setImportResult(null);
     setErrorMsg('');
     setLogs([]);
+    setCleanseRaw('');
+    setCleanseError('');
+    setCleanseWarnings([]);
   }, []);
 
   const isReady   = phase === 'mapped' && !!selectedEvent && colMapValid(colMap);
@@ -377,6 +468,65 @@ export default function EnterpriseImporter() {
                 </div>
               )}
 
+              {/* ── AI Cleanse panel (Mission Z) ──────────────────────────── */}
+              <details className="bg-zinc-900 border border-zinc-800 rounded-2xl group" open>
+                <summary className="cursor-pointer list-none px-5 py-4 flex items-center gap-3 select-none">
+                  <div className="p-2 bg-[#c8a200]/10 border border-[#c8a200]/30 rounded-xl">
+                    <Sparkles className="w-4 h-4 text-[#c8a200]" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-black text-sm">AI Cleanse</p>
+                    <p className="text-[10px] text-zinc-500 font-mono mt-0.5">
+                      Paste any messy roster — Claude normalizes it into the strict importer schema.
+                    </p>
+                  </div>
+                  <span className="text-[9px] text-zinc-600 font-mono uppercase tracking-widest hidden sm:inline">
+                    Mission Z
+                  </span>
+                </summary>
+
+                <div className="px-5 pb-5 space-y-3">
+                  <textarea
+                    value={cleanseRaw}
+                    onChange={(e) => setCleanseRaw(e.target.value)}
+                    disabled={cleansing}
+                    placeholder={
+                      'Paste anything — comma, tab, or space delimited. Misspellings + missing columns OK.\n\n' +
+                      'Smith, John, QB, 6-2, 195, 4.6\n' +
+                      'Doe Jane WR 5-10 175 4.5\n' +
+                      'Garcia,Luis,RB,5\'9",185,4.78'
+                    }
+                    rows={6}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-3 text-xs font-mono text-zinc-200 placeholder:text-zinc-700 focus:outline-none focus:ring-2 focus:ring-[#c8a200]/30 focus:border-[#c8a200]/30 resize-y"
+                  />
+
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <p className="text-[10px] text-zinc-600 font-mono">
+                      {cleanseRaw.length.toLocaleString()} chars · max 200,000
+                    </p>
+                    <button
+                      onClick={handleCleanse}
+                      disabled={cleansing || cleanseRaw.trim().length === 0}
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-[#c8a200] hover:bg-[#e0b900] disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-black font-black text-xs uppercase tracking-[0.15em] rounded-xl transition-colors"
+                    >
+                      {cleansing ? (
+                        <><Loader2 className="w-3.5 h-3.5 animate-spin" />Cleansing…</>
+                      ) : (
+                        <><Sparkles className="w-3.5 h-3.5" />Cleanse</>
+                      )}
+                    </button>
+                  </div>
+
+                  {cleanseError && (
+                    <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+                      <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
+                      <p className="text-red-300 text-xs font-mono">{cleanseError}</p>
+                    </div>
+                  )}
+                </div>
+              </details>
+              {/* ── /AI Cleanse panel ──────────────────────────────────────── */}
+
               {/* Expected columns card */}
               <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
                 <Label>Expected CSV Columns</Label>
@@ -404,6 +554,25 @@ export default function EnterpriseImporter() {
           {/* File info + column mapping */}
           {showLeft && colMap !== null && (
             <>
+              {cleanseWarnings.length > 0 && (
+                <div className="bg-amber-500/5 border border-amber-500/30 rounded-2xl p-4 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-3.5 h-3.5 text-[#c8a200] shrink-0" />
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c8a200]">
+                      AI Cleanse — {cleanseWarnings.length} parse warning{cleanseWarnings.length === 1 ? '' : 's'}
+                    </p>
+                  </div>
+                  <ul className="space-y-1 max-h-32 overflow-auto">
+                    {cleanseWarnings.map((w, i) => (
+                      <li key={i} className="text-[11px] text-amber-200 font-mono flex gap-2">
+                        <span className="text-zinc-600 shrink-0">·</span>
+                        <span className="break-words">{w}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
                 <div className="flex items-center gap-3 mb-5">
                   <FileText className="w-5 h-5 text-[#c8a200] shrink-0" />

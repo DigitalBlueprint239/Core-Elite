@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from 'react';
-import { getOutboxItems, getSyncableOutboxItems, removeFromOutbox, updateOutboxItem, getDeadLetterItems, resetDeadLetterItem, OutboxItem } from '../lib/offline';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { getOutboxItems, getSyncableOutboxItems, removeFromOutbox, updateOutboxItem, getDeadLetterItems, resetDeadLetterItem, OutboxItem, ResultOutboxPayload, chunkOutboxItems, OUTBOX_BATCH_SIZE } from '../lib/offline';
 import { supabase } from '../lib/supabase';
 import { update as updateHlc } from '../lib/hlc';
 
@@ -17,7 +17,9 @@ export interface DuplicateChallenge {
   newValue:             number;
   athleteId:            string;
   drillType:            string;
-  payload:              any;      // original outbox payload for re-submission
+  // Original payload preserved for re-submission. Always a ResultOutboxPayload
+  // — duplicate challenges only arise from the 'result' RPC path.
+  payload:              ResultOutboxPayload;
 }
 // lww.ts (addBiasedShouldKeep, deviceStatusShouldUpdate) wired in Phase 4
 // when the pull path is added. The add-biased principle is applied below
@@ -32,6 +34,21 @@ export function useOfflineSync() {
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const [duplicateChallenges, setDuplicateChallenges] = useState<DuplicateChallenge[]>([]);
 
+  // ── Sync re-entrancy lock ──────────────────────────────────────────────
+  //
+  // Three triggers can fire syncOutbox simultaneously:
+  //   - the navigator 'online' event handler
+  //   - the 30-second background interval
+  //   - StationMode's manual "Force Sync" button
+  //
+  // Without this guard, two concurrent flushes would race the same outbox
+  // items: both read pending=N, both POST the first item, the server
+  // returns one success and one duplicate, and the two flushes increment
+  // retry_count out of sync. The ref MUST clear in `finally` so a network
+  // failure mid-batch doesn't leave the system permanently locked
+  // (Mission "Sync Lock Hardening" anti-pattern).
+  const isSyncingRef = useRef<boolean>(false);
+
   const updatePendingCount = useCallback(async () => {
     const items = await getOutboxItems();
     setPendingCount(items.filter(i => i.status !== 'dead_letter').length);
@@ -41,14 +58,41 @@ export function useOfflineSync() {
   const syncOutbox = useCallback(async () => {
     if (!navigator.onLine) return;
 
-    // Use by_status index (v3) — avoids full-store scan (idx_outbox_pending, v2 §3.3.3)
+    // Re-entrancy guard — if another invocation is already draining the
+    // outbox, defer. The ref is cleared in `finally` (success AND failure)
+    // below, so a transient network error never permanently halts sync.
+    if (isSyncingRef.current) return;
+    isSyncingRef.current = true;
+    try {
+
+    // Use by_status_timestamp compound index (v5) — bounded key range, no
+    // full partition scan, FIFO order preserved within each status.
     const syncableItems = await getSyncableOutboxItems();
 
     if (syncableItems.length === 0) return;
 
-    console.log(`Syncing ${syncableItems.length} items...`);
+    // Mission "Sync Lock Hardening": chunk into ≤50-item batches when the
+    // queue is large. Each batch is processed serially internally to
+    // preserve HLC causal ordering (parallel uploads could violate the
+    // server-side LWW invariant). Between batches we yield to the event
+    // loop with a microtask so IndexedDB locks release and StationMode's
+    // capture path can interleave a fresh addToOutbox without blocking.
+    const batches = chunkOutboxItems(syncableItems, OUTBOX_BATCH_SIZE);
+    console.log(
+      `Syncing ${syncableItems.length} items in ${batches.length} batch(es) of ${OUTBOX_BATCH_SIZE}...`,
+    );
 
-    for (const item of syncableItems) {
+    for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
+      const batch = batches[batchIdx];
+
+      // Yield between batches (skip the very first one — no point pausing
+      // before any work). setTimeout(..., 0) is the canonical way to let
+      // the IndexedDB transaction queue drain on iPad Safari.
+      if (batchIdx > 0) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      }
+
+      for (const item of batch) {
       // Check if item is ready for retry (exponential backoff)
       if (item.retry_count > 0 && item.last_attempt_at) {
         const backoffMs = Math.pow(2, item.retry_count) * 1000;
@@ -80,6 +124,12 @@ export function useOfflineSync() {
             // Phase 2: each rep is its own immutable row (v1 §3.6.4).
             p_attempt_number:   item.payload.attempt_number ?? 1,
             p_meta:             metaWithHlc,
+            // Mission "p_source_type": provenance discriminator. Mandated
+            // at the OutboxItem type level, so item.payload.source_type is
+            // guaranteed-present for every 'result' variant — no fallback,
+            // no silent default. Bad values are rejected by the RPC with
+            // {success: false, error: 'invalid source_type'}.
+            p_source_type:      item.payload.source_type,
           });
 
           // ── Suspicious duplicate: park for operator review ────────────────
@@ -187,22 +237,33 @@ export function useOfflineSync() {
           };
           await updateOutboxItem(updatedItem);
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('Failed to sync item', item.id, err);
         const newRetryCount = item.retry_count + 1;
+        const errorMessage = err instanceof Error ? err.message : String(err);
         const updatedItem: OutboxItem = {
           ...item,
           retry_count: newRetryCount,
           last_attempt_at: Date.now(),
-          error_message: err.message,
+          error_message: errorMessage,
           status: newRetryCount >= MAX_RETRIES ? 'dead_letter' : 'retrying'
         };
         await updateOutboxItem(updatedItem);
       }
-    }
+      } // end inner per-item for-of
+    }   // end outer batch loop
 
     await updatePendingCount();
     setLastSyncTime(new Date());
+
+    } finally {
+      // Mission "Sync Lock Hardening" anti-pattern: the ref MUST clear
+      // here, regardless of how the body exited (early return on empty
+      // queue, normal completion, or unhandled exception bubbling out
+      // of a per-item processor). Without this, a single network blip
+      // would permanently lock background syncs.
+      isSyncingRef.current = false;
+    }
   }, [updatePendingCount]);
 
   // ---------------------------------------------------------------------------
@@ -234,8 +295,10 @@ export function useOfflineSync() {
     } else if (resolution === 'keep_both') {
       const allItems = await getOutboxItems();
       const item = allItems.find(i => i.id === itemId);
-      if (item) {
-        await updateOutboxItem({
+      // Duplicate-challenge items are always 'result' rows (see Gate 2 path
+      // in syncOutbox). The narrow guard keeps TS happy and documents intent.
+      if (item && item.type === 'result') {
+        const updated: OutboxItem = {
           ...item,
           status:          'pending',
           retry_count:     0,
@@ -246,7 +309,8 @@ export function useOfflineSync() {
             // attempt_number > 1 bypasses Gate 2 in submit_result_secure
             attempt_number: (challenge.existingAttemptNum ?? 1) + 1,
           },
-        });
+        };
+        await updateOutboxItem(updated);
       }
 
     } else if (resolution === 'replace') {

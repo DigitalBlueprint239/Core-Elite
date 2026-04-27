@@ -34,6 +34,7 @@ export default function Register() {
     heightInches: '',
     weightLb: '',
     highSchool: '',
+    film_url: '',
     parentName: '',
     parentEmail: '',
     parentPhone: '',
@@ -232,6 +233,9 @@ export default function Register() {
       : null;
     const weightLb:   number | null = parseInt(formData.weightLb, 10) || null;
     const highSchool: string | null = sanitize(formData.highSchool) || null;
+    // Film URL: trim and coerce empty → null. Zod already validated URL shape
+    // when non-empty. Pass raw string to the RPC; normalization lives server-side.
+    const filmUrl:    string | null = formData.film_url.trim() || null;
     // ────────────────────────────────────────────────────────────────────────
 
     try {
@@ -256,6 +260,7 @@ export default function Register() {
         p_height_in:                  heightIn,
         p_weight_lb:                  weightLb,
         p_high_school:                highSchool,
+        p_film_url:                   filmUrl,
       });
 
       if (rpcError) throw rpcError;
@@ -531,6 +536,28 @@ export default function Register() {
                 className="w-full p-3 bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none"
                 placeholder="School name"
               />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                Highlight Film URL <span className="text-zinc-300 font-normal normal-case tracking-normal">(optional)</span>
+              </label>
+              <input
+                name="film_url"
+                type="url"
+                value={formData.film_url}
+                onChange={handleInputChange}
+                maxLength={500}
+                className={`w-full p-3 bg-white border ${formErrors.film_url ? 'border-red-500 ring-1 ring-red-500' : 'border-zinc-200'} rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none`}
+                placeholder="https://www.hudl.com/video/..."
+                autoComplete="off"
+                inputMode="url"
+              />
+              {formErrors.film_url ? (
+                <p className="text-[10px] font-bold text-red-500 mt-1">{formErrors.film_url}</p>
+              ) : (
+                <p className="text-[10px] text-zinc-400 mt-1">Hudl link works best. You can add this later from your athlete profile.</p>
+              )}
             </div>
             {/* ─────────────────────────────────────────────────────────── */}
 

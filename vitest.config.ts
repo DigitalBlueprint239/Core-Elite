@@ -1,6 +1,17 @@
 import { defineConfig } from 'vitest/config';
+import path from 'node:path';
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      '@core-elite/native-ble/src/stub':
+        path.resolve(__dirname, 'packages/native-ble/src/stub.ts'),
+      '@core-elite/native-ble':
+        path.resolve(__dirname, 'packages/native-ble/src/stub.ts'),
+      '@core-elite/powersync':
+        path.resolve(__dirname, 'packages/powersync/src/index.ts'),
+    },
+  },
   test: {
     // node environment: all tests use SimulatedDevice (isolated HLC state)
     // and pure functions only — no DOM, no localStorage dependency.

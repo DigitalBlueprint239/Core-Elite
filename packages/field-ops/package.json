@@ -1,0 +1,27 @@
+{
+  "name": "@core-elite/field-ops",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Core Elite — React Native field-ops client (station capture, laser-trip integration)",
+  "main": "src/mobile/index.ts",
+  "types": "src/mobile/index.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.mobile.json --noEmit"
+  },
+  "dependencies": {
+    "@core-elite/native-ble": "0.1.0",
+    "@core-elite/powersync": "0.1.0"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-native": ">=0.73.0",
+    "react-native-qrcode-svg": ">=6.3.0",
+    "react-native-svg": ">=15.0.0",
+    "react-native-vision-camera": ">=4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react-native-qrcode-svg": { "optional": true },
+    "react-native-svg":        { "optional": true },
+    "react-native-vision-camera": { "optional": true }
+  }
+}

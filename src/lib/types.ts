@@ -19,7 +19,10 @@ export const athleteRegistrationSchema = z.object({
   injuryWaiverAck: z.boolean().refine(v => v === true, 'Waiver must be accepted'),
   mediaRelease: z.boolean(),
   dataConsent: z.boolean().refine(v => v === true, 'Consent is required'),
-  marketingConsent: z.boolean()
+  marketingConsent: z.boolean(),
+  // Film URL is OPTIONAL — founder directive. Empty string is accepted as "not provided"
+  // so the form control can stay controlled without tripping URL validation.
+  film_url: z.union([z.string().url('Enter a valid URL'), z.literal('')]).optional(),
 });
 
 export const resultSubmissionSchema = z.object({
@@ -29,6 +32,13 @@ export const resultSubmissionSchema = z.object({
   value_num: z.number().positive(),
   meta: z.record(z.string(), z.any()).optional()
 });
+
+// ── Provenance discriminator ──────────────────────────────────────────────────
+//
+// Matches the CHECK constraint in migrations/007a_add_source_type.sql and the
+// p_source_type validation in submit_result_secure (hardening_migration.sql).
+// The OutboxItem result payload mandates this — see src/lib/offline.ts.
+export type SourceType = 'manual' | 'live_ble' | 'imported_csv' | 'webhook';
 
 // ── Plan / billing types ──────────────────────────────────────────────────────
 export type ActivePlan = 'athlete_pro' | 'enterprise' | null;

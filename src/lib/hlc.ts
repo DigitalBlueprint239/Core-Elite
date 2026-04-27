@@ -35,6 +35,23 @@ export interface HLCComponents {
   nodeId: string;  // device identifier
 }
 
+// Spec-form tuple representation: HLC = [pt, l, id]. Used by callers that
+// prefer positional access; the canonical wire format is the formatted
+// string produced by formatHlc(). The `id` slot is the same nodeId as
+// HLCComponents.
+export type HLCTuple = [pt: number, l: number, id: string];
+
+/** Convert the spec tuple into the canonical pt(16)_l(10)_id wire string. */
+export function tupleToHlc([pt, l, id]: HLCTuple): string {
+  return formatHlc(pt, l, id);
+}
+
+/** Convert the canonical wire string back to the spec tuple. */
+export function hlcToTuple(hlcStr: string): HLCTuple {
+  const c = parseHlc(hlcStr);
+  return [c.pt, c.l, c.nodeId];
+}
+
 // ---------------------------------------------------------------------------
 // Internal state
 // ---------------------------------------------------------------------------
@@ -214,3 +231,23 @@ export function maxHlc(a: string, b: string): string {
 export function currentHlc(): string {
   return formatHlc(_state.pt, _state.l, getDeviceId());
 }
+
+// ---------------------------------------------------------------------------
+// Spec-named API (v2 corpus §3.1.3)
+//
+// `now`, `receive`, `compare` are the names called out in the framework
+// specification. They are thin re-exports of the existing implementation
+// — same algorithm, same byte-for-byte format, same lexicographic
+// comparison. Adding the aliases here lets every caller speak the spec
+// vocabulary without forcing a rename of the long-standing tick / update
+// / compareHlc surface that the rest of the codebase already consumes.
+// ---------------------------------------------------------------------------
+
+/** Generate a new HLC timestamp for a local write (alias of tick). */
+export const now: typeof tick = tick;
+
+/** Advance the local clock past a remote HLC string (alias of update). */
+export const receive: typeof update = update;
+
+/** Lexicographic comparator for HLC strings (alias of compareHlc). */
+export const compare: typeof compareHlc = compareHlc;

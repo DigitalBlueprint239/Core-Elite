@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, CalendarDays, Users, ShieldCheck,
   Download, LogOut, Menu, X, ChevronRight,
-  Zap, Radio, Upload,
+  Zap, Radio, Upload, Trophy,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -24,6 +24,9 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'B2B Exports',                to: '/league-admin/exports',          icon: <Download className="w-4 h-4" /> },
   { label: 'Command Center',             to: '/league-admin/command-center',   icon: <Radio    className="w-4 h-4" /> },
   { label: 'Vendor Import',              to: '/league-admin/import',           icon: <Upload   className="w-4 h-4" /> },
+  // Scout View (/scout/*) — renders outside this layout's shell. The
+  // sidebar entry is the single navigation surface that surfaces it.
+  { label: 'Scout Board',                to: '/scout/leaderboard',             icon: <Trophy   className="w-4 h-4" /> },
 ];
 
 // ─── Sidebar link component ───────────────────────────────────────────────────

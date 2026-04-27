@@ -227,6 +227,28 @@ END;
 $$;
 
 -- RPC: submit_result_secure
+--
+-- Updated by:
+--   - Mission "p_source_type"   : added p_source_type discriminator
+--   - Mission "HLC v2 corpus"   : added p_hlc_timestamp first-class param
+--
+-- Server-side conflict resolution rule (Mission "HLC v2 corpus"):
+--   When two devices race the same logical event, the row whose
+--   `hlc_timestamp` string is **lexicographically greater** wins. The
+--   column is TEXT, the format is the zero-padded `pt(16)_l(10)_id`
+--   produced by src/lib/hlc.ts, and standard B-Tree comparison on TEXT
+--   *is* the lexicographic comparator — no custom collation, no integer
+--   coercion. This RPC is INSERT-with-idempotency: a duplicate
+--   client_result_id short-circuits to add-biased success without
+--   touching the existing row, so the "greater wins" rule materialises
+--   at query time (best-of-N over hlc_timestamp DESC) rather than via
+--   in-place UPDATE. The future device-status / band-status RPCs apply
+--   the same rule via `WHERE incoming.hlc_timestamp > stored.hlc_timestamp`.
+--
+-- p_hlc_timestamp resolution order:
+--   1. Explicit p_hlc_timestamp arg (preferred — what new clients send)
+--   2. p_meta->>'hlc_timestamp'    (legacy callers that embed it in meta)
+--   3. NULL (server stores NULL — query-time order falls back to recorded_at)
 CREATE OR REPLACE FUNCTION submit_result_secure(
     p_client_result_id UUID,
     p_event_id UUID,
@@ -235,37 +257,58 @@ CREATE OR REPLACE FUNCTION submit_result_secure(
     p_station_id TEXT,
     p_drill_type TEXT,
     p_value_num NUMERIC,
-    p_meta JSONB DEFAULT '{}'::jsonb
+    p_meta JSONB DEFAULT '{}'::jsonb,
+    p_source_type TEXT DEFAULT 'manual',
+    p_hlc_timestamp TEXT DEFAULT NULL
 ) RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
     v_result_id UUID;
+    v_hlc       TEXT;
 BEGIN
     -- Validate role (must be authenticated)
     IF auth.role() != 'authenticated' THEN
         RETURN jsonb_build_object('success', false, 'error', 'Unauthorized');
     END IF;
 
-    -- Idempotency check
+    -- Validate source_type against the CHECK constraint domain.
+    -- Mirrors migrations/007a_add_source_type.sql so a malformed payload
+    -- never reaches the insert and never trips a 23514 CHECK error.
+    IF p_source_type NOT IN ('manual', 'live_ble', 'imported_csv', 'webhook') THEN
+        RETURN jsonb_build_object('success', false, 'error', 'invalid source_type');
+    END IF;
+
+    -- Resolve HLC: explicit arg first, then meta-embedded fallback. Both
+    -- paths preserve the canonical string verbatim — never re-format,
+    -- never coerce to a number. The lexicographic LWW rule depends on
+    -- the byte-exact string round-tripping the client → server boundary.
+    v_hlc := COALESCE(p_hlc_timestamp, p_meta->>'hlc_timestamp');
+
+    -- Idempotency check — duplicate client_result_id is add-biased success.
+    -- Server keeps the prior write's HLC; client removes the outbox item.
     SELECT id INTO v_result_id FROM results WHERE client_result_id = p_client_result_id;
     IF FOUND THEN
         RETURN jsonb_build_object('success', true, 'result_id', v_result_id, 'status', 'duplicate');
     END IF;
 
-    -- Insert result
+    -- Insert result with HLC promoted to its own column. Indexed by
+    -- idx_results_hlc_timestamp (migration 007 / 008a) so cross-device
+    -- ordering queries hit a B-Tree.
     INSERT INTO results (
-        client_result_id, event_id, athlete_id, band_id, station_id, drill_type, value_num, meta, recorded_by
+        client_result_id, event_id, athlete_id, band_id, station_id, drill_type,
+        value_num, meta, source_type, hlc_timestamp, recorded_by
     )
     VALUES (
-        p_client_result_id, p_event_id, p_athlete_id, p_band_id, p_station_id, p_drill_type, p_value_num, p_meta, auth.uid()
+        p_client_result_id, p_event_id, p_athlete_id, p_band_id, p_station_id, p_drill_type,
+        p_value_num, p_meta, p_source_type, v_hlc, auth.uid()
     )
     RETURNING id INTO v_result_id;
 
     -- Trigger report job if all drills done
     -- (This logic can also stay in a trigger or be part of this RPC)
-    
+
     RETURN jsonb_build_object('success', true, 'result_id', v_result_id);
 END;
 $$;

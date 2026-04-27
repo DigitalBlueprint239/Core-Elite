@@ -20,7 +20,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { formatHlc, parseHlc, compareHlc, maxHlc } from '../hlc';
+import { formatHlc, parseHlc, compareHlc, maxHlc, compare, tupleToHlc, hlcToTuple, type HLCTuple } from '../hlc';
 
 // ---------------------------------------------------------------------------
 // SimulatedDevice — isolated HLC instance for testing
@@ -478,5 +478,91 @@ describe('update() receive-event rule', () => {
     const tB = deviceB.tick();    // now=9001, newPt=9001 > stored 9000 → l resets to 0
     expect(parseHlc(tB).pt).toBe(9001);
     expect(parseHlc(tB).l).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Spec-mandated acceptance — Mission "HLC v2 corpus"
+//
+// The mission's <self_correction_loop> calls out two specific cases by name.
+// They are reproduced here verbatim so a reviewer can grep for the exact
+// wording. Both must pass before the mission can be marked complete.
+// ---------------------------------------------------------------------------
+
+describe('Test Case A — same-millisecond tiebreak via lexicographic node id', () => {
+  it('two HLCs on different node IDs in the same millisecond compare deterministically', () => {
+    // Both devices share the same physical wall clock and the same logical
+    // counter (0). The only differentiator is the nodeId — which is exactly
+    // the tiebreak the format string was designed for.
+    const SAME_MS = 1_750_000_000_000;
+    const aId = 'device-aaaa1111';
+    const bId = 'device-bbbb2222';
+
+    const hlcA = formatHlc(SAME_MS, 0, aId);
+    const hlcB = formatHlc(SAME_MS, 0, bId);
+
+    // Standard lexicographic string compare — never numeric.
+    // The mission anti-pattern explicitly forbids integer comparison.
+    expect(hlcA < hlcB).toBe(true);
+    expect(compare(hlcA, hlcB)).toBeLessThan(0);
+    expect(compare(hlcB, hlcA)).toBeGreaterThan(0);
+    expect(compare(hlcA, hlcA)).toBe(0);
+
+    // The deterministic winner is the same regardless of which device the
+    // operator's tablet is — every node in the cluster computes the same
+    // ordering. That is the property that eliminates non-deterministic
+    // corruption on multi-tablet offline reconnect.
+    expect(maxHlc(hlcA, hlcB)).toBe(hlcB);
+    expect(maxHlc(hlcB, hlcA)).toBe(hlcB);
+  });
+});
+
+describe('Test Case B — receive() advances pt and increments l', () => {
+  it('a remote timestamp ahead of the local clock advances pt and increments l per the v2 corpus rule', () => {
+    // Local device: pt=1000, l=5. Wall clock controlled at 1500 (still
+    // behind the remote we are about to observe).
+    const local = new SimulatedDevice('device-local-01', /* wall */ 1500);
+    // Bootstrap the local state to (1000, 5) by ticking once with wall=1000
+    // (sets pt=1000, l=0) then ticking 5 more times at the same wall ms.
+    local.setWallClock(1000);
+    local.tick();   // pt=1000, l=0 (from initial 0/0 + new wall tick)
+
+    // Re-pin local state to the test fixture (1000, 5) by ticking 5 more.
+    for (let i = 0; i < 5; i++) local.tick();
+    expect(parseHlc(local.current()).pt).toBe(1000);
+    expect(parseHlc(local.current()).l).toBe(5);
+
+    // Remote message arrives with pt=2000, l=3. Local wall clock 1500 < 2000.
+    const remote = formatHlc(2000, 3, 'device-remote-77');
+
+    // Per v2 §3.1.3 receive-event rule:
+    //   newPt = max(local.pt=1000, remote.pt=2000, now=1500) = 2000
+    //   newPt === remote.pt → newL = remote.l + 1 = 4
+    local.setWallClock(1500);
+    local.update(remote);
+
+    const after = parseHlc(local.current());
+    expect(after.pt).toBe(2000);   // pt advanced to dominate remote
+    expect(after.l).toBe(4);       // logical counter incremented past remote's
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Spec aliases (now / receive / compare) + tuple helpers
+// ---------------------------------------------------------------------------
+
+describe('spec-named exports + HLCTuple round-trip', () => {
+  it('compare() is the same comparator as compareHlc()', () => {
+    const a = formatHlc(100, 0, 'device-z');
+    const b = formatHlc(101, 0, 'device-a');
+    expect(compare(a, b)).toBe(compareHlc(a, b));
+    expect(Math.sign(compare(a, b))).toBeLessThan(0);
+  });
+
+  it('tupleToHlc / hlcToTuple round-trip', () => {
+    const tuple: HLCTuple = [42, 7, 'device-x'];
+    const s = tupleToHlc(tuple);
+    expect(s).toBe('0000000000000042_0000000007_device-x');
+    expect(hlcToTuple(s)).toEqual(tuple);
   });
 });

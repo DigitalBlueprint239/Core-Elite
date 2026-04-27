@@ -1,0 +1,21 @@
+{
+  "name": "@core-elite/powersync",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Core Elite — PowerSync local-first SQLite + HLC core (web + React Native)",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@supabase/supabase-js": "^2.0.0",
+    "react": ">=18.0.0",
+    "react-native": ">=0.73.0"
+  },
+  "peerDependenciesMeta": {
+    "react-native": {
+      "optional": true
+    }
+  }
+}

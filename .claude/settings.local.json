@@ -48,7 +48,11 @@
       "Bash(awk '{print $5, $9}')",
       "Bash(wc -l C:/Projects/Core-Elite/migrations/*.sql)",
       "Bash(npx vite *)",
-      "Bash(echo \"BUILD_EXIT:$?\")"
+      "Bash(echo \"BUILD_EXIT:$?\")",
+      "Bash(npx --yes js-yaml .github/workflows/security.yml)",
+      "Skill(claude-api)",
+      "Bash(deno --version)",
+      "Bash(git check-ignore *)"
     ]
   }
 }
