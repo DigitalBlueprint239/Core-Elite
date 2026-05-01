@@ -1,15 +1,15 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Search, Phone, CreditCard, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { BRAND } from '../lib/brand';
 
 interface LookupResult {
-  first_name:  string;
-  last_name:   string;
-  position:    string;
-  band_number: number | null;
-  event_name:  string;
+  id:           string;
+  first_name:   string;
+  last_name:    string;
+  event_id:     string;
+  band_display: string | null;
 }
 
 function formatPhone(raw: string): string {
@@ -25,12 +25,33 @@ export default function Lookup() {
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState<string | null>(null);
   const [searched, setSearched]   = useState(false);
+  const [eventId, setEventId]     = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('events')
+        .select('id')
+        .in('status', ['active', 'draft', 'complete'])
+        .order('event_date', { ascending: false })
+        .limit(1);
+      if (cancelled) return;
+      const id = (data?.[0] as { id?: string } | undefined)?.id ?? null;
+      setEventId(id);
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   async function handleLookup(e: React.FormEvent) {
     e.preventDefault();
     const digits = phone.replace(/\D/g, '');
     if (digits.length !== 10) {
       setError('Please enter a complete 10-digit phone number.');
+      return;
+    }
+    if (!eventId) {
+      setError('No active event found. Please ask event staff for assistance.');
       return;
     }
 
@@ -40,32 +61,16 @@ export default function Lookup() {
     setSearched(false);
 
     try {
-      // Query athletes by parent_phone — join to bands for wristband number
-      // and events for event context. Only return today's or active events.
-      const { data, error: dbErr } = await supabase
-        .from('athletes')
-        .select(`
-          first_name, last_name, position,
-          bands(display_number),
-          events(name, status, event_date)
-        `)
-        .eq('parent_phone', digits)
-        .in('events.status', ['active', 'complete', 'draft'])
-        .order('created_at', { ascending: false })
-        .limit(5);
+      const { data, error: rpcErr } = await supabase.rpc('lookup_athlete_by_phone', {
+        p_phone:    digits,
+        p_event_id: eventId,
+      });
 
-      if (dbErr) throw dbErr;
+      if (rpcErr) throw rpcErr;
 
-      const mapped: LookupResult[] = (data ?? []).map((a: any) => ({
-        first_name:  a.first_name,
-        last_name:   a.last_name,
-        position:    a.position ?? '',
-        band_number: a.bands?.display_number ?? null,
-        event_name:  a.events?.name ?? 'Unknown Event',
-      }));
-
-      setResults(mapped);
-    } catch (err: any) {
+      const rows = (data ?? []) as LookupResult[];
+      setResults(rows);
+    } catch {
       setError('Lookup unavailable. Please ask event staff for assistance.');
     } finally {
       setLoading(false);
@@ -120,7 +125,6 @@ export default function Lookup() {
                 setError(null);
                 setSearched(false);
                 const formatted = formatPhone(e.target.value);
-                // Cap at formatted length for 10 digits
                 if (e.target.value.replace(/\D/g, '').length <= 10) {
                   setPhone(formatted);
                 }
@@ -137,7 +141,7 @@ export default function Lookup() {
 
           <button
             type="submit"
-            disabled={loading || digits.length !== 10}
+            disabled={loading || digits.length !== 10 || !eventId}
             className="w-full py-4 bg-zinc-900 text-white rounded-2xl font-bold text-sm uppercase tracking-wider hover:bg-zinc-800 active:scale-[0.98] transition-all disabled:opacity-40 flex items-center justify-center gap-2"
           >
             {loading ? (
@@ -164,7 +168,7 @@ export default function Lookup() {
             {results.length === 0 ? (
               <div className="p-8 text-center space-y-3">
                 <AlertCircle className="w-8 h-8 text-zinc-300 mx-auto" />
-                <p className="font-bold text-zinc-600">No athlete found</p>
+                <p className="font-bold text-zinc-400">No athlete found</p>
                 <p className="text-sm text-zinc-400 leading-relaxed">
                   No registration found for this phone number. If you believe this is an error, please visit the registration table for assistance.
                 </p>
@@ -177,8 +181,8 @@ export default function Lookup() {
                   </p>
                 </div>
                 <div className="divide-y divide-zinc-100">
-                  {results.map((r, i) => (
-                    <div key={i} className="px-6 py-5 flex items-center gap-4">
+                  {results.map((r) => (
+                    <div key={r.id} className="px-6 py-5 flex items-center gap-4">
                       <div className="w-12 h-12 bg-zinc-900 rounded-2xl flex items-center justify-center shrink-0">
                         <CreditCard className="w-5 h-5 text-white" />
                       </div>
@@ -186,16 +190,13 @@ export default function Lookup() {
                         <p className="font-black text-lg leading-tight">
                           {r.first_name} {r.last_name}
                         </p>
-                        <p className="text-sm text-zinc-500">
-                          {r.position} · {r.event_name}
-                        </p>
                       </div>
                       <div className="text-right shrink-0">
                         <p className="text-[9px] font-bold uppercase tracking-widest text-zinc-400 mb-0.5">
                           Wristband
                         </p>
                         <p className="text-3xl font-black font-mono tabular-nums text-zinc-900 leading-none">
-                          {r.band_number ?? '—'}
+                          {r.band_display ?? '—'}
                         </p>
                       </div>
                     </div>
@@ -216,7 +217,7 @@ export default function Lookup() {
         {!searched && (
           <div className="bg-white px-6 py-5 rounded-2xl border border-zinc-100 text-center">
             <p className="text-xs text-zinc-400 leading-relaxed">
-              Can't remember the phone number used? Visit the <strong className="text-zinc-600">registration table</strong> on event day and staff can assist you.
+              Can't remember the phone number used? Visit the <strong className="text-zinc-400">registration table</strong> on event day and staff can assist you.
             </p>
           </div>
         )}

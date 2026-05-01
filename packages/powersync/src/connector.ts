@@ -227,7 +227,7 @@ export class CoreElitePowerSyncConnector implements PowerSyncBackendConnector {
       // v5: device_timestamp is the LWW key (migration 018).
       // Defaults to 0 on the server if not supplied (backwards compatible).
       p_device_timestamp: (opData.device_timestamp as number) ?? 0,
-      p_source_type:      (opData.source_type as string) ?? 'manual_staff',
+      p_source_type:      (opData.source_type as string) ?? 'manual',
       p_session_id:       (opData.session_id as string) ?? null,
     });
 

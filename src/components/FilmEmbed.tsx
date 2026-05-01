@@ -65,7 +65,7 @@ export default function FilmEmbed({ filmUrl, title }: FilmEmbedProps) {
       <div className="relative h-full min-h-[360px] bg-zinc-950 border border-zinc-900 rounded-2xl overflow-hidden flex items-center justify-center p-8">
         <div className="relative flex flex-col items-center gap-4 text-center max-w-sm">
           <div className="p-5 bg-zinc-900/60 border border-zinc-800/80 rounded-2xl">
-            <PlayCircle className="w-10 h-10 text-zinc-600" strokeWidth={1.25} />
+            <PlayCircle className="w-10 h-10 text-zinc-400" strokeWidth={1.25} />
           </div>
           <p className="text-[11px] font-mono uppercase tracking-[0.25em] text-zinc-500 leading-relaxed">
             {`> UNSUPPORTED PROVIDER. DIRECT LINK ONLY.`}
@@ -95,7 +95,7 @@ export default function FilmEmbed({ filmUrl, title }: FilmEmbedProps) {
             FILM · {providerLabel[parsed.provider]}
           </span>
           {title && (
-            <span className="text-[9px] font-mono uppercase tracking-widest text-zinc-600 truncate">
+            <span className="text-[9px] font-mono uppercase tracking-widest text-zinc-400 truncate">
               · {title}
             </span>
           )}

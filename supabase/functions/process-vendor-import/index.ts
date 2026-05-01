@@ -3,7 +3,7 @@
  * Core Elite — Phase 3: Historical Data Import Pipeline
  *
  * Accepts a JSON payload of pre-parsed legacy CSV records and bulk-inserts
- * them into the results table with source_type = 'legacy_csv'.
+ * them into the results table with source_type = 'imported_csv'.
  *
  * Security:
  *   JWT gateway verification is disabled (verify_jwt = false in config.toml)
@@ -16,10 +16,10 @@
  *   constraint and be counted as 'skipped' rather than errored.
  *
  * Realtime isolation:
- *   Rows inserted with source_type = 'legacy_csv' are excluded from live
+ *   Rows inserted with source_type = 'imported_csv' are excluded from live
  *   dashboard subscriptions via a Realtime filter. This function does not
  *   suppress the Postgres publication directly — that filtering is done
- *   on the subscriber side (LiveCommandCenter: source_type=neq.legacy_csv).
+ *   on the subscriber side (LiveCommandCenter: source_type=neq.imported_csv).
  *
  * Request body (JSON):
  *   {
@@ -413,7 +413,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
         ? new Date(r.recordedAt).getTime()
         : importTimestamp;
 
-      // Deterministic client_result_id for idempotent re-imports
+      // Deterministic client_result_id for idempotent re-imports.
+      // The seed prefix is kept as the LITERAL 'legacy_csv' (NOT the
+      // canonical 'imported_csv' source_type value) so that re-imports
+      // of historical CSVs continue to produce the same client_result_id
+      // they always did. The seed is an opaque hash input — it does not
+      // appear anywhere user-facing, and changing it would invalidate
+      // the idempotency contract for every prior import.
       const seed = [
         'legacy_csv', event_id, r.athleteId,
         r.drillType, r.attemptNum, r.valueNum, recordedAt,
@@ -429,7 +435,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         drill_type:        r.drillType,
         value_num:         r.valueNum,
         attempt_number:    r.attemptNum,
-        source_type:       'legacy_csv',
+        source_type:       'imported_csv',
         validation_status: 'clean',
         device_timestamp:  deviceTs,
         recorded_at:       recordedAt,

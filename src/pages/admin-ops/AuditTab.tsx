@@ -190,7 +190,7 @@ export function AuditTab({ eventId }: { eventId?: string }) {
                   <td className="p-4 text-xs font-mono text-zinc-500 whitespace-nowrap">
                     {formatTime(entry.created_at)}
                   </td>
-                  <td className="p-4 text-xs text-zinc-600 max-w-[140px] truncate">
+                  <td className="p-4 text-xs text-zinc-400 max-w-[140px] truncate">
                     {entry.user_id ? entry.user_id.slice(0, 8) + '…' : <span className="text-zinc-300 italic">system</span>}
                   </td>
                   <td className="p-4">

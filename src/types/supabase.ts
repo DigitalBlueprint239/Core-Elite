@@ -49,6 +49,9 @@ export type Json =
 
 export type SubmitResultVersion = '5' | '6';
 
+// Canonical provenance vocabulary — matches src/lib/types.ts SourceType.
+export type SourceType = 'manual' | 'live_ble' | 'imported_csv';
+
 export interface SubmitResultPayloadV5 {
   client_result_id: string;
   event_id:         string;

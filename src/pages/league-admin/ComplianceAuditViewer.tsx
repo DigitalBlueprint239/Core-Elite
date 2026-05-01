@@ -72,7 +72,7 @@ function RoleBadge({ role }: { role: string }) {
     coach:            'text-purple-400',
     scout:            'text-amber-400',
     staff:            'text-zinc-400',
-    system:           'text-zinc-600',
+    system:           'text-zinc-400',
   };
   return (
     <span className={`text-[9px] font-mono font-bold uppercase tracking-widest ${map[role] ?? 'text-zinc-500'}`}>
@@ -238,11 +238,11 @@ export default function ComplianceAuditViewer() {
 
       {/* Filter bar */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-md px-4 py-3 flex flex-wrap items-center gap-3">
-        <Filter className="w-3.5 h-3.5 text-zinc-600 shrink-0" />
+        <Filter className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
 
         {/* Date range */}
         <div className="flex items-center gap-2">
-          <span className="text-[9px] font-bold uppercase tracking-[0.15em] text-zinc-600">From</span>
+          <span className="text-[9px] font-bold uppercase tracking-[0.15em] text-zinc-400">From</span>
           <input
             type="date"
             value={dateFrom}
@@ -251,7 +251,7 @@ export default function ComplianceAuditViewer() {
           />
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[9px] font-bold uppercase tracking-[0.15em] text-zinc-600">To</span>
+          <span className="text-[9px] font-bold uppercase tracking-[0.15em] text-zinc-400">To</span>
           <input
             type="date"
             value={dateTo}
@@ -272,12 +272,12 @@ export default function ComplianceAuditViewer() {
               <option key={v} value={v}>{l}</option>
             ))}
           </select>
-          <ChevronRight className="pointer-events-none absolute right-1.5 w-3 h-3 text-zinc-600 rotate-90" />
+          <ChevronRight className="pointer-events-none absolute right-1.5 w-3 h-3 text-zinc-400 rotate-90" />
         </div>
 
         {/* Search */}
         <div className="relative flex items-center ml-auto">
-          <Search className="absolute left-2 w-3 h-3 text-zinc-600 pointer-events-none" />
+          <Search className="absolute left-2 w-3 h-3 text-zinc-400 pointer-events-none" />
           <input
             type="text"
             placeholder="Filter by actor, event, record ID..."
@@ -293,18 +293,18 @@ export default function ComplianceAuditViewer() {
         {/* Table header */}
         <div className="grid grid-cols-[1.2fr_1fr_1.4fr_1fr_1fr_0.8fr_0.3fr] border-b border-zinc-800 min-w-[900px]">
           {['Timestamp', 'Actor', 'Action', 'Target', 'Event', 'Device', ''].map(h => (
-            <div key={h} className="px-3 py-2 text-[9px] font-bold uppercase tracking-[0.15em] text-zinc-600">{h}</div>
+            <div key={h} className="px-3 py-2 text-[9px] font-bold uppercase tracking-[0.15em] text-zinc-400">{h}</div>
           ))}
         </div>
 
         {loading && (
-          <div className="px-3 py-10 text-center text-[10px] font-mono text-zinc-600 uppercase tracking-widest animate-pulse">
+          <div className="px-3 py-10 text-center text-[10px] font-mono text-zinc-400 uppercase tracking-widest animate-pulse">
             Querying audit log...
           </div>
         )}
 
         {!loading && filtered.length === 0 && (
-          <div className="px-3 py-10 text-center text-[10px] font-mono text-zinc-600 uppercase tracking-widest">
+          <div className="px-3 py-10 text-center text-[10px] font-mono text-zinc-400 uppercase tracking-widest">
             No audit entries found in this range
           </div>
         )}
@@ -327,7 +327,7 @@ export default function ComplianceAuditViewer() {
                     <span className="text-[10px] font-mono tabular-nums text-zinc-300">
                       {ts.toLocaleDateString()}
                     </span>
-                    <span className="text-[9px] font-mono tabular-nums text-zinc-600">
+                    <span className="text-[9px] font-mono tabular-nums text-zinc-400">
                       {ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                     </span>
                   </div>
@@ -348,7 +348,7 @@ export default function ComplianceAuditViewer() {
                   {/* Target */}
                   <div className="px-3 py-2.5 flex flex-col justify-center min-w-0">
                     <span className="text-[9px] font-bold uppercase tracking-widest text-zinc-500 leading-tight">{entry.target_type}</span>
-                    <span className="text-[9px] font-mono text-zinc-600 truncate leading-tight">
+                    <span className="text-[9px] font-mono text-zinc-400 truncate leading-tight">
                       {entry.target_id ? entry.target_id.slice(0, 14) + '…' : '—'}
                     </span>
                   </div>
@@ -362,7 +362,7 @@ export default function ComplianceAuditViewer() {
 
                   {/* Device */}
                   <div className="px-3 py-2.5 flex items-center min-w-0">
-                    <span className="text-[9px] font-mono text-zinc-600 truncate">
+                    <span className="text-[9px] font-mono text-zinc-400 truncate">
                       {entry.device_id ?? '—'}
                     </span>
                   </div>
@@ -378,20 +378,20 @@ export default function ComplianceAuditViewer() {
                   <div className="border-b border-zinc-800/60 bg-zinc-800/20 px-4 py-3">
                     <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 text-[10px] font-mono">
                       <div>
-                        <span className="text-zinc-600 uppercase tracking-widest">Actor ID</span>
+                        <span className="text-zinc-400 uppercase tracking-widest">Actor ID</span>
                         <p className="text-zinc-300 break-all mt-0.5">{entry.actor_id}</p>
                       </div>
                       <div>
-                        <span className="text-zinc-600 uppercase tracking-widest">Target ID</span>
+                        <span className="text-zinc-400 uppercase tracking-widest">Target ID</span>
                         <p className="text-zinc-300 break-all mt-0.5">{entry.target_id ?? '—'}</p>
                       </div>
                       <div>
-                        <span className="text-zinc-600 uppercase tracking-widest">HLC Timestamp</span>
+                        <span className="text-zinc-400 uppercase tracking-widest">HLC Timestamp</span>
                         <p className="text-zinc-300 break-all mt-0.5">{entry.hlc_timestamp ?? '—'}</p>
                       </div>
                       {entry.target_data && (
                         <div className="col-span-2 lg:col-span-3">
-                          <span className="text-zinc-600 uppercase tracking-widest">Target Data</span>
+                          <span className="text-zinc-400 uppercase tracking-widest">Target Data</span>
                           <pre className="text-zinc-400 mt-0.5 whitespace-pre-wrap break-all text-[9px] leading-relaxed bg-zinc-900 rounded p-2 border border-zinc-800">
                             {JSON.stringify(entry.target_data, null, 2)}
                           </pre>
@@ -409,7 +409,7 @@ export default function ComplianceAuditViewer() {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between pt-2 border-t border-zinc-800">
-          <span className="text-[10px] font-mono text-zinc-600 tabular-nums">
+          <span className="text-[10px] font-mono text-zinc-400 tabular-nums">
             Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total.toLocaleString()} entries
           </span>
           <div className="flex items-center gap-1">

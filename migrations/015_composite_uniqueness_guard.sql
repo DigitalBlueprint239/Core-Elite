@@ -78,21 +78,41 @@ END $$;
 --   WHERE athlete_id  = p_athlete_id
 --     AND drill_type  = p_drill_type
 --     AND recorded_at > now() - interval '120 seconds'
+--   ORDER BY recorded_at DESC
+--   LIMIT 1
 --
 -- Without an index, this is a sequential scan. With 10,000+ results across a
 -- busy combine day, this adds measurable latency to every result submission.
--- This partial index covers exactly the hot path: recent rows only.
+--
+-- IMMUTABILITY CONSTRAINT:
+--   PostgreSQL forbids volatile functions (now(), CURRENT_TIMESTAMP, random())
+--   in CREATE INDEX predicates — managed Postgres providers (Supabase included)
+--   reject such migrations at provisioning time with
+--   `ERROR: functions in index predicate must be marked IMMUTABLE`.
+--   The previous predicate `WHERE recorded_at > (now() - interval '24 hours')`
+--   triggered exactly that failure on every fresh provision.
+--
+-- DESIGN:
+--   Use a stable compound B-Tree on (athlete_id, drill_type, recorded_at DESC).
+--   Postgres uses the leading two equality columns to seek and the trailing
+--   recorded_at DESC to satisfy the ORDER BY ... LIMIT 1 directly from the
+--   index — no sort, no heap scan beyond the single matching tuple. Bounding
+--   `recorded_at > now() - interval '120 seconds'` becomes a cheap range scan
+--   on the trailing index column, so the original hot-path latency goal is
+--   preserved without any volatile predicate.
+--
+--   The optional `WHERE voided IS DISTINCT FROM true` predicate keeps the
+--   index sparse: voided rows are explicitly excluded from suspicious-duplicate
+--   detection (see the matching filter inside submit_result_secure below), so
+--   they should not occupy index pages either. `IS DISTINCT FROM` correctly
+--   handles NULL (Postgres treats `voided = false` and `voided IS NULL` as
+--   "not voided"), and it is an immutable boolean expression — index-safe.
 --
 -- IF NOT EXISTS: idempotent.
 -- ---------------------------------------------------------------------------
-CREATE INDEX IF NOT EXISTS idx_results_recent_by_athlete_drill
+CREATE INDEX IF NOT EXISTS idx_results_athlete_drill_time
     ON results (athlete_id, drill_type, recorded_at DESC)
-    WHERE recorded_at > (now() - interval '24 hours');
-
--- NOTE: The partial index predicate uses a static expression. PostgreSQL
--- evaluates it at index creation time, not at query time. For a combine that
--- runs within a single calendar day this is correct. For multi-day events,
--- run this migration again at the start of each day to refresh the index.
+    WHERE voided IS DISTINCT FROM true;
 
 -- ---------------------------------------------------------------------------
 -- Step 3: submit_result_secure v4 — adds suspicious-duplicate detection.

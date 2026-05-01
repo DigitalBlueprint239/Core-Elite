@@ -276,7 +276,7 @@ BEGIN
     -- Validate source_type against the CHECK constraint domain.
     -- Mirrors migrations/007a_add_source_type.sql so a malformed payload
     -- never reaches the insert and never trips a 23514 CHECK error.
-    IF p_source_type NOT IN ('manual', 'live_ble', 'imported_csv', 'webhook') THEN
+    IF p_source_type NOT IN ('manual', 'live_ble', 'imported_csv') THEN
         RETURN jsonb_build_object('success', false, 'error', 'invalid source_type');
     END IF;
 
