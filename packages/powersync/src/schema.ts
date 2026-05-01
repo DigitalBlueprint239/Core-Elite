@@ -59,7 +59,7 @@ const results = new Table({
   validation_status: new Column({ type: ColumnType.TEXT }),
   hlc_timestamp:     new Column({ type: ColumnType.TEXT }),    // HLC: causal ordering
   device_timestamp:  new Column({ type: ColumnType.INTEGER }), // LWW key: device wall-clock ms
-  source_type:       new Column({ type: ColumnType.TEXT }),    // 'live_ble' | 'manual_staff'
+  source_type:       new Column({ type: ColumnType.TEXT }),    // 'live_ble' | 'manual' | 'imported_csv'
   session_id:        new Column({ type: ColumnType.TEXT }),    // combine wave/session
   verification_hash: new Column({ type: ColumnType.TEXT }),    // HMAC-SHA-256, set by Edge Fn
   recorded_at:       new Column({ type: ColumnType.TEXT }),

@@ -52,7 +52,8 @@
       "Bash(npx --yes js-yaml .github/workflows/security.yml)",
       "Skill(claude-api)",
       "Bash(deno --version)",
-      "Bash(git check-ignore *)"
+      "Bash(git check-ignore *)",
+      "Bash(sort -k5 -n -r)"
     ]
   }
 }

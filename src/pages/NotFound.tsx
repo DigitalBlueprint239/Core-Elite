@@ -59,7 +59,7 @@ export default function NotFound() {
       </div>
 
       {/* Footer stamp */}
-      <p className="mt-12 text-zinc-600 text-xs font-bold uppercase tracking-widest">
+      <p className="mt-12 text-zinc-400 text-xs font-bold uppercase tracking-widest">
         Core Elite Athletic Testing &copy; 2026
       </p>
     </div>

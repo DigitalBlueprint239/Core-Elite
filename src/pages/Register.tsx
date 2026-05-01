@@ -1,14 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { athleteRegistrationSchema } from '../lib/types';
 import { z } from 'zod';
-import { SignatureCanvas, SignatureMetadata } from '../components/SignatureCanvas';
+import type { SignatureMetadata } from '../components/SignatureCanvas';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronRight, CheckCircle2, AlertCircle, ArrowLeft, ChevronDown } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { useOrganization } from '../hooks/useOrganization';
 import { BRAND } from '../lib/brand';
+
+// SignatureCanvas pulls in signature_pad. It is only used on the final waiver
+// step, so we lazy-load it — Vite emits a separate signature_pad chunk and
+// the initial registration bundle stays small for the spotty-LTE first paint.
+const SignatureCanvas = lazy(() =>
+  import('../components/SignatureCanvas').then(m => ({ default: m.SignatureCanvas })),
+);
+const SignatureFallback = () => (
+  <div className="h-[180px] rounded-xl border-2 border-dashed border-zinc-200 bg-white flex items-center justify-center text-xs text-zinc-400 font-medium">
+    Loading signature pad…
+  </div>
+);
 
 export default function Register() {
   const [searchParams] = useSearchParams();
@@ -377,11 +389,11 @@ export default function Register() {
           Back to Home
         </Link>
         <div className="flex items-center gap-2 text-sm text-zinc-400">
-          <span className={step >= 1 ? "text-zinc-900 font-bold" : ""}>1. Profile</span>
+          <span className={step >= 1 ? "text-zinc-900 font-bold" : ""}>1. Essentials</span>
           <ChevronRight className="w-4 h-4" />
-          <span className={step >= 2 ? "text-zinc-900 font-bold" : ""}>2. Waiver</span>
+          <span className={step >= 2 ? "text-zinc-900 font-bold" : ""}>2. Profile</span>
           <ChevronRight className="w-4 h-4" />
-          <span className={step >= 3 ? "text-zinc-900 font-bold" : ""}>3. Claim Band</span>
+          <span className={step >= 3 ? "text-zinc-900 font-bold" : ""}>3. Waiver</span>
         </div>
       </div>
 
@@ -401,31 +413,35 @@ export default function Register() {
 
       <AnimatePresence mode="wait">
         {step === 1 && (
-          <motion.div 
+          <motion.div
             key="step1"
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
             className="space-y-6"
           >
+            {/* ── ESSENTIALS ONLY: Name, DOB, Phone (Event already resolved
+                above the form). Optional biometrics + film URL live on Step 2
+                so spotty-LTE registrants don't bounce on the first paint.
+            ────────────────────────────────────────────────────────────── */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
                 <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">First Name</label>
-                <input 
-                  name="firstName" 
-                  value={formData.firstName} 
+                <input
+                  name="firstName"
+                  value={formData.firstName}
                   onChange={handleInputChange}
-                  className="w-full p-3 bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none" 
+                  className="w-full p-3 bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none"
                   placeholder="John"
                 />
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Last Name</label>
-                <input 
-                  name="lastName" 
-                  value={formData.lastName} 
+                <input
+                  name="lastName"
+                  value={formData.lastName}
                   onChange={handleInputChange}
-                  className="w-full p-3 bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none" 
+                  className="w-full p-3 bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none"
                   placeholder="Doe"
                 />
               </div>
@@ -434,45 +450,137 @@ export default function Register() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
                 <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Date of Birth</label>
-                <input 
+                <input
                   type="date"
-                  name="date_of_birth" 
-                  value={formData.date_of_birth} 
+                  name="date_of_birth"
+                  value={formData.date_of_birth}
                   onChange={handleInputChange}
-                  className={`w-full p-3 bg-white border ${dateOfBirthError ? 'border-red-500 ring-1 ring-red-500' : 'border-zinc-200'} rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none`} 
+                  className={`w-full p-3 bg-white border ${dateOfBirthError ? 'border-red-500 ring-1 ring-red-500' : 'border-zinc-200'} rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none`}
                 />
                 {dateOfBirthError && <p className="text-[10px] font-bold text-red-500 mt-1">{dateOfBirthError}</p>}
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Position</label>
-                <select 
-                  name="position" 
-                  value={formData.position} 
+                <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Parent / Guardian Phone</label>
+                <input
+                  type="tel"
+                  name="parentPhone"
+                  value={formData.parentPhone}
                   onChange={handleInputChange}
-                  className="w-full p-3 bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none"
-                >
-                  <option value="">Select Position</option>
-                  <option value="ATH">ATH (Athlete)</option>
-                  <option value="CB">CB (Cornerback)</option>
-                  <option value="DB">DB (Defensive Back)</option>
-                  <option value="DL">DL (Defensive Line)</option>
-                  <option value="EDGE">EDGE (Edge Rusher)</option>
-                  <option value="FB">FB (Fullback)</option>
-                  <option value="K">K (Kicker)</option>
-                  <option value="LB">LB (Linebacker)</option>
-                  <option value="LS">LS (Long Snapper)</option>
-                  <option value="OL">OL (Offensive Line)</option>
-                  <option value="P">P (Punter)</option>
-                  <option value="QB">QB (Quarterback)</option>
-                  <option value="RB">RB (Running Back)</option>
-                  <option value="S">S (Safety)</option>
-                  <option value="TE">TE (Tight End)</option>
-                  <option value="WR">WR (Wide Receiver)</option>
-                </select>
+                  placeholder="(555) 555-5555"
+                  maxLength={14}
+                  className={`w-full p-3 bg-white border ${phoneError ? 'border-red-500 ring-1 ring-red-500' : 'border-zinc-200'} rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none`}
+                />
+                {phoneError && (
+                  <p className="text-[10px] font-bold text-red-500 mt-1">{phoneError}</p>
+                )}
               </div>
             </div>
 
-            {/* ── Biometrics ───────────────────────────────────────────── */}
+            <button
+              onClick={() => {
+                const missingFields =
+                  !formData.firstName ||
+                  !formData.lastName  ||
+                  !formData.date_of_birth;
+
+                if (missingFields) {
+                  if (!formData.date_of_birth) setDateOfBirthError('Date of birth is required.');
+                  setError({ message: 'Missing Required Fields', details: 'Please complete all required fields.' });
+                  return;
+                }
+
+                // DOB parsing with noon-UTC anchor so a "2010-01-01" entry on
+                // UTC-5 doesn't roll back to 2009-12-31.
+                const dob = new Date(formData.date_of_birth + 'T12:00:00Z');
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+
+                if (isNaN(dob.getTime())) {
+                  setDateOfBirthError('Please enter a valid date of birth.');
+                  return;
+                }
+                if (dob >= today) {
+                  setDateOfBirthError('Date of birth must be in the past.');
+                  return;
+                }
+
+                let age = today.getFullYear() - dob.getFullYear();
+                const monthDiff = today.getMonth() - dob.getMonth();
+                if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
+                  age -= 1;
+                }
+
+                // Hard block: combine participants must be 10–19. Mirrors the
+                // Zod schema in src/lib/types.ts and the SQL GATE 1 check in
+                // register_athlete_secure (migration 014).
+                if (age < 10 || age > 19) {
+                  setDateOfBirthError(
+                    age < 10
+                      ? `Athlete must be at least 10 years old to participate (calculated age: ${age}).`
+                      : `Athlete must be 19 or younger to participate (calculated age: ${age}).`
+                  );
+                  return;
+                }
+
+                setDateOfBirthError(null);
+
+                const phoneDigits = formData.parentPhone.replace(/\D/g, '');
+                if (phoneDigits.length !== 10) {
+                  setPhoneError('Please enter a complete 10-digit phone number.');
+                  return;
+                }
+
+                setPhoneError(null);
+                setError(null);
+                setStep(2);
+              }}
+              className="w-full py-4 bg-zinc-900 text-white rounded-2xl font-bold text-lg shadow-lg hover:bg-zinc-800 transition-all flex items-center justify-center gap-2"
+            >
+              Continue
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </motion.div>
+        )}
+
+        {step === 2 && (
+          <motion.div
+            key="step2"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            className="space-y-6"
+          >
+            {/* ── PROFILE: optional biometrics + parent contact details. All
+                non-essential fields live here so Step 1 is instant on LTE.
+            ────────────────────────────────────────────────────────────── */}
+            <div className="space-y-1">
+              <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Position</label>
+              <select
+                name="position"
+                value={formData.position}
+                onChange={handleInputChange}
+                className="w-full p-3 bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none"
+              >
+                <option value="">Select Position</option>
+                <option value="ATH">ATH (Athlete)</option>
+                <option value="CB">CB (Cornerback)</option>
+                <option value="DB">DB (Defensive Back)</option>
+                <option value="DL">DL (Defensive Line)</option>
+                <option value="EDGE">EDGE (Edge Rusher)</option>
+                <option value="FB">FB (Fullback)</option>
+                <option value="K">K (Kicker)</option>
+                <option value="LB">LB (Linebacker)</option>
+                <option value="LS">LS (Long Snapper)</option>
+                <option value="OL">OL (Offensive Line)</option>
+                <option value="P">P (Punter)</option>
+                <option value="QB">QB (Quarterback)</option>
+                <option value="RB">RB (Running Back)</option>
+                <option value="S">S (Safety)</option>
+                <option value="TE">TE (Tight End)</option>
+                <option value="WR">WR (Wide Receiver)</option>
+              </select>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
                 <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">
@@ -559,124 +667,81 @@ export default function Register() {
                 <p className="text-[10px] text-zinc-400 mt-1">Hudl link works best. You can add this later from your athlete profile.</p>
               )}
             </div>
-            {/* ─────────────────────────────────────────────────────────── */}
 
             <div className="space-y-4 pt-4 border-t border-zinc-100">
               <h3 className="font-bold">Parent/Guardian Information</h3>
               <div className="space-y-1">
                 <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Full Name</label>
-                <input 
-                  name="parentName" 
-                  value={formData.parentName} 
+                <input
+                  name="parentName"
+                  value={formData.parentName}
                   onChange={handleInputChange}
-                  className="w-full p-3 bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none" 
+                  className="w-full p-3 bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Email</label>
-                  <input 
-                    type="email"
-                    name="parentEmail" 
-                    value={formData.parentEmail} 
-                    onChange={handleInputChange}
-                    className="w-full p-3 bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none" 
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Phone</label>
-                  <input
-                    type="tel"
-                    name="parentPhone"
-                    value={formData.parentPhone}
-                    onChange={handleInputChange}
-                    placeholder="(555) 555-5555"
-                    maxLength={14}
-                    className={`w-full p-3 bg-white border ${phoneError ? 'border-red-500 ring-1 ring-red-500' : 'border-zinc-200'} rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none`}
-                  />
-                  {phoneError && (
-                    <p className="text-[10px] font-bold text-red-500 mt-1">{phoneError}</p>
-                  )}
-                </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Email</label>
+                <input
+                  type="email"
+                  name="parentEmail"
+                  value={formData.parentEmail}
+                  onChange={handleInputChange}
+                  className="w-full p-3 bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Emergency Contact Name</label>
+                <input
+                  name="emergencyContactName"
+                  value={formData.emergencyContactName}
+                  onChange={handleInputChange}
+                  className="w-full p-3 bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Emergency Contact Phone</label>
+                <input
+                  type="tel"
+                  name="emergencyContactPhone"
+                  value={formData.emergencyContactPhone}
+                  onChange={handleInputChange}
+                  placeholder="(555) 555-5555"
+                  maxLength={14}
+                  className="w-full p-3 bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none"
+                />
               </div>
             </div>
 
-            <button
-              onClick={() => {
-                // ── Gate 1: required fields ──────────────────────────────────
-                const missingFields =
-                  !formData.firstName ||
-                  !formData.lastName  ||
-                  !formData.date_of_birth ||
-                  !formData.parentEmail;
-
-                if (missingFields) {
-                  if (!formData.date_of_birth) setDateOfBirthError('Date of birth is required.');
-                  setError({ message: 'Missing Required Fields', details: 'Please complete all required fields.' });
-                  return;
-                }
-
-                // ── Gate 2: DOB — parse with noon-UTC anchor to prevent
-                //    timezone-shifted date interpretation. e.g. "2010-01-01"
-                //    parsed as midnight local time on UTC-5 becomes 2009-12-31.
-                const dob = new Date(formData.date_of_birth + 'T12:00:00Z');
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-
-                if (isNaN(dob.getTime())) {
-                  setDateOfBirthError('Please enter a valid date of birth.');
-                  return;
-                }
-                if (dob >= today) {
-                  setDateOfBirthError('Date of birth must be in the past.');
-                  return;
-                }
-
-                // Precise age calculation: subtract 1 if the birthday has not
-                // yet occurred in the current calendar year.
-                let age = today.getFullYear() - dob.getFullYear();
-                const monthDiff = today.getMonth() - dob.getMonth();
-                if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
-                  age -= 1;
-                }
-
-                // Hard block: combine participants must be 10–19 years old.
-                // This mirrors the Zod schema in src/lib/types.ts and the SQL
-                // GATE 1 check in register_athlete_secure (migration 014).
-                // Must return here — do NOT fall through to setStep(2).
-                if (age < 10 || age > 19) {
-                  setDateOfBirthError(
-                    age < 10
-                      ? `Athlete must be at least 10 years old to participate (calculated age: ${age}).`
-                      : `Athlete must be 19 or younger to participate (calculated age: ${age}).`
-                  );
-                  return;
-                }
-
-                setDateOfBirthError(null);
-
-                // ── Gate 3: parent phone must have exactly 10 digits ─────────
-                const phoneDigits = formData.parentPhone.replace(/\D/g, '');
-                if (phoneDigits.length !== 10) {
-                  setPhoneError('Please enter a complete 10-digit phone number.');
-                  return;
-                }
-
-                setPhoneError(null);
-                setError(null);
-                setStep(2);
-              }}
-              className="w-full py-4 bg-zinc-900 text-white rounded-2xl font-bold text-lg shadow-lg hover:bg-zinc-800 transition-all flex items-center justify-center gap-2"
-            >
-              Continue to Waiver
-              <ChevronRight className="w-5 h-5" />
-            </button>
+            <div className="flex gap-4">
+              <button
+                onClick={() => setStep(1)}
+                className="flex-1 py-4 border border-zinc-200 rounded-2xl font-bold text-zinc-600 hover:bg-zinc-50 transition-all"
+              >
+                Back
+              </button>
+              <button
+                onClick={() => {
+                  // Parent email is required for waiver delivery — gate the
+                  // step transition rather than letting Zod fail later.
+                  if (!formData.parentEmail) {
+                    setError({ message: 'Parent email required.', details: 'Waiver and results notifications need a parent email address.' });
+                    return;
+                  }
+                  setError(null);
+                  setStep(3);
+                }}
+                className="flex-[2] py-4 bg-zinc-900 text-white rounded-2xl font-bold text-lg shadow-lg hover:bg-zinc-800 transition-all flex items-center justify-center gap-2"
+              >
+                Continue to Waiver
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
           </motion.div>
         )}
 
-        {step === 2 && (
-          <motion.div 
-            key="step2"
+        {step === 3 && (
+          <motion.div
+            key="step3"
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
@@ -776,27 +841,6 @@ export default function Register() {
                   </label>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Emergency Contact Name</label>
-                  <input 
-                    name="emergencyContactName" 
-                    value={formData.emergencyContactName} 
-                    onChange={handleInputChange}
-                    className="w-full p-3 bg-zinc-50 border border-zinc-200 rounded-xl outline-none" 
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Emergency Contact Phone</label>
-                  <input
-                    type="tel"
-                    name="emergencyContactPhone"
-                    value={formData.emergencyContactPhone}
-                    onChange={handleInputChange}
-                    placeholder="(555) 555-5555"
-                    maxLength={14}
-                    className="w-full p-3 bg-zinc-50 border border-zinc-200 rounded-xl outline-none"
-                  />
-                </div>
               </div>
             </div>
 
@@ -804,14 +848,16 @@ export default function Register() {
               <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">
                 Parent / Guardian Signature <span className="text-red-500">*</span>
               </label>
-              <SignatureCanvas
-                signerName={formData.parentName}
-                onSave={(meta) => {
-                  setSignature(meta);
-                  setError(null);
-                }}
-                onClear={() => setSignature(null)}
-              />
+              <Suspense fallback={<SignatureFallback />}>
+                <SignatureCanvas
+                  signerName={formData.parentName}
+                  onSave={(meta) => {
+                    setSignature(meta);
+                    setError(null);
+                  }}
+                  onClear={() => setSignature(null)}
+                />
+              </Suspense>
             </div>
 
             {error && (
@@ -831,13 +877,13 @@ export default function Register() {
             )}
 
             <div className="flex gap-4">
-              <button 
-                onClick={() => setStep(1)}
+              <button
+                onClick={() => setStep(2)}
                 className="flex-1 py-4 border border-zinc-200 rounded-2xl font-bold text-zinc-600 hover:bg-zinc-50 transition-all"
               >
                 Back
               </button>
-              <button 
+              <button
                 onClick={handleSubmit}
                 disabled={!signature || !formData.injuryWaiverAck || !formData.mediaRelease || !formData.dataConsent || loading}
                 className="flex-[2] py-4 bg-zinc-900 text-white rounded-2xl font-bold text-lg shadow-lg hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"

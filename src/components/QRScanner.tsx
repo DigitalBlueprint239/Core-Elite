@@ -1,5 +1,21 @@
 import React, { useEffect, useRef } from 'react';
-import { Html5QrcodeScanner } from 'html5-qrcode';
+
+// `html5-qrcode` ships ~85 KB minified + parses a heavyweight DOM polyfill on
+// load. The lib is referenced ONLY inside this component's effect, so we can
+// dynamic-import it at mount time. Vite hoists the import into its own chunk
+// (`html5-qrcode-*.js`) and ships zero of it on the initial bundle. The default
+// export is captured by the runtime once and reused across remounts.
+type Html5QrcodeScannerCtor = new (
+  elementId: string,
+  config: { fps: number; qrbox: number; aspectRatio: number; disableFlip: boolean },
+  verbose: boolean,
+) => {
+  render: (
+    onSuccess: (decodedText: string) => void,
+    onError: (error: unknown) => void,
+  ) => void;
+  clear: () => Promise<void>;
+};
 
 interface QRScannerProps {
   onScan: (decodedText: string) => void;
@@ -9,37 +25,42 @@ interface QRScannerProps {
   disableFlip?: boolean;
 }
 
-export const QRScanner: React.FC<QRScannerProps> = ({ 
-  onScan, 
-  fps = 10, 
-  qrbox = 250, 
+export const QRScanner: React.FC<QRScannerProps> = ({
+  onScan,
+  fps = 10,
+  qrbox = 250,
   aspectRatio = 1.0,
-  disableFlip = false 
+  disableFlip = false,
 }) => {
-  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+  const scannerRef = useRef<{ clear: () => Promise<void> } | null>(null);
 
   useEffect(() => {
-    const scanner = new Html5QrcodeScanner(
-      'qr-reader',
-      { fps, qrbox, aspectRatio, disableFlip },
-      /* verbose= */ false
-    );
+    let cancelled = false;
+    let active: { clear: () => Promise<void> } | null = null;
 
-    scanner.render(
-      (decodedText) => {
-        onScan(decodedText);
-        // scanner.clear(); // Optional: stop scanning after first success
-      },
-      (error) => {
-        // console.warn(error);
-      }
-    );
-
-    scannerRef.current = scanner;
+    (async () => {
+      const mod = await import('html5-qrcode');
+      if (cancelled) return;
+      const Ctor = (mod as unknown as { Html5QrcodeScanner: Html5QrcodeScannerCtor })
+        .Html5QrcodeScanner;
+      const scanner = new Ctor(
+        'qr-reader',
+        { fps, qrbox, aspectRatio, disableFlip },
+        false,
+      );
+      scanner.render(
+        (decodedText) => onScan(decodedText),
+        () => { /* intentionally ignored — every non-match is a "decode error" */ },
+      );
+      active = scanner;
+      scannerRef.current = scanner;
+    })();
 
     return () => {
-      if (scannerRef.current) {
-        scannerRef.current.clear().catch(err => console.error('Failed to clear scanner', err));
+      cancelled = true;
+      const s = active ?? scannerRef.current;
+      if (s) {
+        s.clear().catch(err => console.error('Failed to clear scanner', err));
       }
     };
   }, [onScan, fps, qrbox, aspectRatio, disableFlip]);
@@ -50,3 +71,5 @@ export const QRScanner: React.FC<QRScannerProps> = ({
     </div>
   );
 };
+
+export default QRScanner;

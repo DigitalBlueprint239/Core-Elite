@@ -290,7 +290,7 @@ function resolvePosition(raw: string): string {
 // ─── TierHash ─────────────────────────────────────────────────────────────────
 
 const TIER_COLORS = {
-  hs:  { line: 'bg-zinc-700',   text: 'text-zinc-600'  },
+  hs:  { line: 'bg-zinc-700',   text: 'text-zinc-400'  },
   fcs: { line: 'bg-zinc-500',   text: 'text-zinc-400'  },
   p5:  { line: 'bg-white/60',   text: 'text-white/60'  },
 } as const;
@@ -423,7 +423,7 @@ function DeltaTrack({ drill, current }: DeltaTrackProps) {
                   : 'border-zinc-800 bg-zinc-950'
               }`}
             >
-              <span className="text-[9px] uppercase tracking-widest text-zinc-600">{tier.label}</span>
+              <span className="text-[9px] uppercase tracking-widest text-zinc-400">{tier.label}</span>
               <span className={`font-black ${beat ? 'text-emerald-400' : 'text-zinc-400'}`}>
                 Δ {c.fmtSigned(delta)}
               </span>
@@ -481,7 +481,7 @@ function MetricCard({ drill, current, index }: MetricCardProps) {
     };
     return {
       label:        '[ DEVELOPMENTAL ]',
-      badgeCls:     'text-zinc-600 border-zinc-800 bg-zinc-950/60',
+      badgeCls:     'text-zinc-400 border-zinc-800 bg-zinc-950/60',
       cardBorder:   'border-white/5',
       accentCls:    'bg-transparent',
       isCoreElite:  false,
@@ -501,7 +501,7 @@ function MetricCard({ drill, current, index }: MetricCardProps) {
       {/* Header row */}
       <div className="flex items-start justify-between gap-3 mb-4">
         <div>
-          <p className="text-[9px] font-black uppercase tracking-[0.25em] text-zinc-600 mb-1">
+          <p className="text-[9px] font-black uppercase tracking-[0.25em] text-zinc-400 mb-1">
             {drill.label}
           </p>
           <p className="text-3xl font-mono font-black text-white tabular-nums leading-none">
@@ -544,7 +544,7 @@ function NullMetricCard({ drill, index }: NullMetricCardProps) {
             [ -- ]
           </p>
         </div>
-        <span className="text-[9px] font-black font-mono uppercase tracking-widest px-2 py-1 rounded border whitespace-nowrap mt-1 text-zinc-600 border-zinc-800 bg-zinc-950/40">
+        <span className="text-[9px] font-black font-mono uppercase tracking-widest px-2 py-1 rounded border whitespace-nowrap mt-1 text-zinc-400 border-zinc-800 bg-zinc-950/40">
           [ SENSOR NULL ]
         </span>
       </div>
@@ -595,7 +595,7 @@ export default function ProgressionMatrix({ results, position, firstName, weight
     return (
       <div className="bg-zinc-900/50 backdrop-blur-md border border-white/5 rounded-2xl p-10 text-center transform-gpu">
         <Activity className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
-        <p className="text-zinc-600 text-xs font-mono uppercase tracking-widest">
+        <p className="text-zinc-400 text-xs font-mono uppercase tracking-widest">
           No benchmark metrics on record.
         </p>
         <p className="text-zinc-700 text-[10px] font-mono mt-1">
@@ -624,7 +624,7 @@ export default function ProgressionMatrix({ results, position, firstName, weight
               </span>
             )}
           </div>
-          <p className="text-[9px] font-mono uppercase tracking-[0.2em] text-zinc-600">
+          <p className="text-[9px] font-mono uppercase tracking-[0.2em] text-zinc-400">
             {profile.label} · {activeCards.length}/{cards.length} metric{cards.length !== 1 ? 's' : ''} on record
           </p>
         </div>
@@ -648,7 +648,7 @@ export default function ProgressionMatrix({ results, position, firstName, weight
 
       {/* Telemetry headline */}
       {firstName && (
-        <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-zinc-600 border-l-2 border-[#c8a200]/40 pl-3">
+        <p className="text-[10px] font-mono uppercase tracking-[0.2em] text-zinc-400 border-l-2 border-[#c8a200]/40 pl-3">
           {`> ${firstName.toUpperCase()} — LIVE TELEMETRY VS. POSITIONAL D1 THRESHOLDS`}
         </p>
       )}
@@ -673,7 +673,7 @@ export default function ProgressionMatrix({ results, position, firstName, weight
         ] as const).map(({ color, label, glow }) => (
           <div key={label} className="flex items-center gap-1.5">
             <div className={`w-2 h-2 rounded-full ${color} ${glow}`} />
-            <span className="text-[9px] font-mono text-zinc-600 uppercase tracking-widest">{label}</span>
+            <span className="text-[9px] font-mono text-zinc-400 uppercase tracking-widest">{label}</span>
           </div>
         ))}
       </div>

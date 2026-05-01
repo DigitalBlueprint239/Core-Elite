@@ -32,11 +32,11 @@ const ROLES: { value: EventRole; label: string; color: string }[] = [
   { value: 'station_operator', label: 'Station Operator', color: 'text-emerald-400' },
   { value: 'coach',            label: 'Coach',            color: 'text-purple-400' },
   { value: 'scout',            label: 'Scout',            color: 'text-amber-400' },
-  { value: 'no_access',        label: 'No Access',        color: 'text-zinc-600' },
+  { value: 'no_access',        label: 'No Access',        color: 'text-zinc-400' },
 ];
 
 function roleColor(role: EventRole): string {
-  return ROLES.find(r => r.value === role)?.color ?? 'text-zinc-600';
+  return ROLES.find(r => r.value === role)?.color ?? 'text-zinc-400';
 }
 
 // ─── Role selector cell ───────────────────────────────────────────────────────
@@ -62,7 +62,7 @@ function RoleCell({
           </option>
         ))}
       </select>
-      <ChevronDown className="pointer-events-none absolute right-1 w-3 h-3 text-zinc-600" />
+      <ChevronDown className="pointer-events-none absolute right-1 w-3 h-3 text-zinc-400" />
     </div>
   );
 }
@@ -266,7 +266,7 @@ export default function StaffAccessManagement() {
 
       {/* Search */}
       <div className="relative max-w-xs">
-        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-600 pointer-events-none" />
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-400 pointer-events-none" />
         <input
           type="text"
           placeholder="Search staff..."
@@ -279,7 +279,7 @@ export default function StaffAccessManagement() {
       {/* Matrix table */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-md overflow-auto">
         {loading ? (
-          <div className="px-4 py-10 text-center text-[10px] font-mono text-zinc-600 uppercase tracking-widest animate-pulse">
+          <div className="px-4 py-10 text-center text-[10px] font-mono text-zinc-400 uppercase tracking-widest animate-pulse">
             Loading staff matrix...
           </div>
         ) : (
@@ -322,7 +322,7 @@ export default function StaffAccessManagement() {
                         </div>
                         <div className="min-w-0">
                           <p className="text-xs font-bold text-zinc-200 truncate leading-tight">{s.display_name}</p>
-                          <p className="text-[9px] font-mono text-zinc-600 truncate leading-tight">{s.email}</p>
+                          <p className="text-[9px] font-mono text-zinc-400 truncate leading-tight">{s.email}</p>
                         </div>
                       </div>
                     </td>
@@ -374,7 +374,7 @@ export default function StaffAccessManagement() {
 
               {filteredStaff.length === 0 && !loading && (
                 <tr>
-                  <td colSpan={events.length + 2} className="px-4 py-10 text-center text-[10px] font-mono text-zinc-600 uppercase tracking-widest">
+                  <td colSpan={events.length + 2} className="px-4 py-10 text-center text-[10px] font-mono text-zinc-400 uppercase tracking-widest">
                     No staff members found
                   </td>
                 </tr>
@@ -386,7 +386,7 @@ export default function StaffAccessManagement() {
 
       {/* Legend */}
       <div className="flex flex-wrap items-center gap-4 pt-2 border-t border-zinc-800">
-        <span className="text-[9px] font-bold uppercase tracking-[0.18em] text-zinc-600">Role Legend</span>
+        <span className="text-[9px] font-bold uppercase tracking-[0.18em] text-zinc-400">Role Legend</span>
         {ROLES.map(r => (
           <span key={r.value} className="flex items-center gap-1.5 text-[9px] font-mono">
             <span className={`font-bold uppercase tracking-widest ${r.color}`}>{r.label}</span>
