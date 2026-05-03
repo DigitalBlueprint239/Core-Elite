@@ -103,7 +103,7 @@ jobs:
       # etc. severity=HIGH,CRITICAL matches our npm-audit blocking policy.
       # exit-code=1 fails the step when anything at that level is found.
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           scan-type: "fs"
           scan-ref: "."
