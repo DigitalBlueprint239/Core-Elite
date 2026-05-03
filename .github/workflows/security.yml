@@ -102,22 +102,17 @@ jobs:
       # Scans the whole repo tree: package-lock.json, Dockerfiles, IaC,
       # etc. severity=HIGH,CRITICAL matches our npm-audit blocking policy.
       # exit-code=1 fails the step when anything at that level is found.
+      # Output is `table` (printed to the CI log) rather than `sarif` because
+      # GitHub Code Scanning is not currently enabled on this repo, so SARIF
+      # uploads were silently no-ops and findings stayed invisible. When Code
+      # Scanning is enabled, switch back to `format: sarif` + a follow-on
+      # `github/codeql-action/upload-sarif` step.
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           scan-type: "fs"
           scan-ref: "."
           severity: "HIGH,CRITICAL"
           exit-code: "1"
           ignore-unfixed: true         # advisories without a fix don't block
-          format: "sarif"
-          output: "trivy-results.sarif"
-
-      # Upload findings to the GitHub Security tab even when the step above
-      # failed — reviewers need the detail, not just a red X.
-      - name: Upload Trivy SARIF
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: "trivy-results.sarif"
-          category: "trivy-fs"
+          format: "table"
