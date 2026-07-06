@@ -94,7 +94,7 @@ function EditRow({
 }) {
   const inputCls =
     'w-full px-2 py-1.5 bg-zinc-950 border border-zinc-800 rounded-lg text-[13px] ' +
-    'text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 ' +
+    'text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:ring-2 ' +
     'focus:ring-[#c8a200]/40 focus:border-[#c8a200]/40 font-mono';
 
   return (
@@ -450,7 +450,7 @@ export function AthletesTab({ event }: { event: any }) {
               placeholder="Search name, email, band, position..."
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="pl-9 pr-4 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-sm text-zinc-100 placeholder:text-zinc-600 outline-none focus:ring-2 focus:ring-[#c8a200]/30 focus:border-[#c8a200]/30 w-72"
+              className="pl-9 pr-4 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-sm text-zinc-100 placeholder:text-zinc-400 outline-none focus:ring-2 focus:ring-[#c8a200]/30 focus:border-[#c8a200]/30 w-72"
             />
           </div>
         </div>

@@ -118,7 +118,7 @@ export default function B2BExports() {
             )}
           </div>
 
-          <div className="flex items-start gap-2 text-[10px] font-mono text-zinc-600 leading-relaxed border-t border-zinc-800 pt-4 mt-2">
+          <div className="flex items-start gap-2 text-[10px] font-mono text-zinc-400 leading-relaxed border-t border-zinc-800 pt-4 mt-2">
             <AlertCircle className="w-3 h-3 shrink-0 mt-0.5 text-amber-700" />
             <span>
               Each export is recorded in the FERPA audit log (action: <span className="text-zinc-400">data_export</span>).

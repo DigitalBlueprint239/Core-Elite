@@ -69,7 +69,7 @@ export default function StationSelection() {
       <div className="min-h-screen flex items-center justify-center bg-zinc-950">
         <div className="text-center space-y-4">
           <div className="w-10 h-10 border-2 border-zinc-700 border-t-[#c8a200] rounded-full animate-spin mx-auto" />
-          <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-600 animate-pulse">
+          <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-400 animate-pulse">
             QUERYING LIVE EVENT...
           </p>
         </div>

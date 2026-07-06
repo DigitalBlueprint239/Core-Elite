@@ -279,10 +279,12 @@ export interface ResultPayload {
   device_timestamp?: number;
   /**
    * 'live_ble'     — captured via BLE hardware; eligible for cryptographic verification.
-   * 'manual_staff' — manually keyed; verification_hash will always be null.
-   * Defaults to 'manual_staff' when omitted.
+   * 'manual'       — manually keyed; verification_hash will always be null.
+   * 'imported_csv' — bulk-ingested historical record.
+   * Defaults to 'manual' when omitted (defense-in-depth — the StationMode
+   * capture path always sets this explicitly per Mission "p_source_type").
    */
-  source_type?:      'live_ble' | 'manual_staff';
+  source_type?:      'live_ble' | 'manual' | 'imported_csv';
   /** Combine wave/session identifier for bulk session exports. */
   session_id?:       string;
   meta?:             Record<string, unknown>;
@@ -348,7 +350,7 @@ export function useSyncedWrite() {
     const id              = payload.client_result_id;
     const now             = new Date().toISOString();
     const deviceTimestamp = payload.device_timestamp ?? Date.now();
-    const sourceType      = payload.source_type ?? 'manual_staff';
+    const sourceType      = payload.source_type ?? 'manual';
 
     await db.execute(`
       INSERT OR REPLACE INTO results (

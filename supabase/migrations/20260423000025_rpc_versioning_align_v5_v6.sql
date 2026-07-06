@@ -257,7 +257,7 @@ CREATE OR REPLACE FUNCTION submit_result_secure(
     p_attempt_number   INT     DEFAULT 1,
     p_meta             JSONB   DEFAULT '{}'::jsonb,
     p_device_timestamp BIGINT  DEFAULT 0,
-    p_source_type      TEXT    DEFAULT 'manual_staff',
+    p_source_type      TEXT    DEFAULT 'manual',
     p_session_id       TEXT    DEFAULT NULL
 ) RETURNS JSONB
 LANGUAGE plpgsql

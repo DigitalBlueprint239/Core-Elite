@@ -228,7 +228,7 @@ export default function AuthCallback() {
             Link Invalid
           </h1>
           <p className="text-zinc-400 text-sm max-w-sm leading-relaxed">{errorMsg}</p>
-          <p className="text-zinc-600 text-xs">Redirecting to sign-in…</p>
+          <p className="text-zinc-400 text-xs">Redirecting to sign-in…</p>
         </div>
       </div>
     );

@@ -19,7 +19,7 @@
  *   VERIFICATION_SECRET and the same canonical fields — proving the data
  *   transited through this server-side function unmodified.
  *
- *   Manual entries (source_type = 'manual_staff') are included in the export
+ *   Manual entries (source_type = 'manual') are included in the export
  *   with verification_hash = null and verification_status = 'unverified_manual'.
  *   There is no path to hardware-verify a manually entered result.
  *
@@ -183,7 +183,7 @@ interface ResultRow {
 type VerificationStatus =
   | 'hardware_verified'     // live_ble, hash computed, clock sync present
   | 'hardware_no_clock'     // live_ble, hash computed, no clock sync data
-  | 'unverified_manual';    // manual_staff, no hardware attestation possible
+  | 'unverified_manual';    // manual entry, no hardware attestation possible
 
 interface ExportResult {
   result_id:           string;
@@ -191,7 +191,11 @@ interface ExportResult {
   value_num:           number;
   attempt_number:      number;
   recorded_at:         string;
-  source_type:         'live_ble' | 'manual_staff';
+  // Canonical SourceType (src/lib/types.ts). Hardware-verified rows are
+  // 'live_ble' only; everything else is the unverified manual or imported
+  // path. Verified-export only includes rows whose source_type is in this
+  // narrow union — imported_csv rows are filtered out at the query level.
+  source_type:         'live_ble' | 'manual';
   verification_status: VerificationStatus;
   verification_hash:   string | null;
   /** The exact string that was hashed. Null for manual entries. */
@@ -357,14 +361,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
         });
 
       } else {
-        // manual_staff — hardware verification is not possible, by design
+        // 'manual' — hardware verification is not possible, by design
         exportResults.push({
           result_id:            row.result_id,
           drill_type:           row.drill_type,
           value_num:            row.value_num,
           attempt_number:       row.attempt_number,
           recorded_at:          row.recorded_at,
-          source_type:          'manual_staff',
+          source_type:          'manual',
           verification_status:  'unverified_manual',
           verification_hash:    null,
           verification_payload: null,
@@ -411,7 +415,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // ── Step 8: Return the signed export payload ───────────────────────────
 
     const verifiedCount   = exportResults.filter(r => r.source_type === 'live_ble').length;
-    const unverifiedCount = exportResults.filter(r => r.source_type === 'manual_staff').length;
+    const unverifiedCount = exportResults.filter(r => r.source_type === 'manual').length;
 
     const payload = {
       generated_at:          new Date().toISOString(),

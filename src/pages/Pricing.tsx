@@ -152,7 +152,7 @@ export default function Pricing() {
                 <span className="text-5xl font-black tabular-nums">$3K</span>
                 <span className="text-zinc-500 font-bold pb-1">/mo</span>
               </div>
-              <p className="text-[11px] text-zinc-600 font-bold mt-0.5">
+              <p className="text-[11px] text-zinc-400 font-bold mt-0.5">
                 Billed annually at ${PLANS.enterprise.price.toLocaleString()}/yr
               </p>
               <p className="text-zinc-500 text-sm mt-2">
@@ -187,7 +187,7 @@ export default function Pricing() {
         </div>
 
         {/* Flywheel caption */}
-        <p className="text-center text-zinc-600 text-xs mt-10 max-w-lg mx-auto leading-relaxed">
+        <p className="text-center text-zinc-400 text-xs mt-10 max-w-lg mx-auto leading-relaxed">
           The flywheel: $49 gets an athlete through the gate → verified data builds their profile → $14.99/mo keeps it live →
           scouts find it through the $36K/yr Enterprise API → demand drives more registrations.
         </p>
@@ -195,7 +195,7 @@ export default function Pricing() {
 
       {/* Footer */}
       <footer className="border-t border-zinc-900 py-8 text-center">
-        <div className="inline-flex items-center gap-2 text-zinc-600 text-xs">
+        <div className="inline-flex items-center gap-2 text-zinc-400 text-xs">
           <img src={BRAND.logo} alt="" className="w-4 h-4 opacity-30" />
           © 2026 Core Elite Network. All rights reserved.
         </div>

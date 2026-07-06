@@ -5,18 +5,18 @@
 --
 -- CHANGES:
 --
---   1. Expands the results.source_type check constraint to include 'legacy_csv'.
+--   1. Expands the results.source_type check constraint to include 'imported_csv'.
 --      This allows the process-vendor-import Edge Function to tag imported
 --      rows distinctly from live BLE captures and manual staff entries.
 --
---   2. Partial index on source_type = 'legacy_csv' so admin queries (e.g.
+--   2. Partial index on source_type = 'imported_csv' so admin queries (e.g.
 --      "show only imported records") stay fast as the table grows.
 --
 --   3. Partial index for Realtime filter: Supabase Realtime subscriptions can
---      now use filter = 'source_type=neq.legacy_csv' to exclude imports from
+--      now use filter = 'source_type=neq.imported_csv' to exclude imports from
 --      live dashboards without a full-table scan.
 --
--- WHY NOT USE 'manual_staff':
+-- WHY NOT USE 'manual':
 --   Legacy CSV rows differ semantically from staff manual entry — they lack a
 --   station operator, may predate the current event, and should be hidden from
 --   real-time combine dashboards. Using a dedicated source_type makes filtering
@@ -38,7 +38,7 @@ BEGIN;
 
 -- Ensure the column exists (idempotent IF NOT EXISTS)
 ALTER TABLE results
-  ADD COLUMN IF NOT EXISTS source_type TEXT NOT NULL DEFAULT 'manual_staff';
+  ADD COLUMN IF NOT EXISTS source_type TEXT NOT NULL DEFAULT 'manual';
 
 -- Also ensure other columns from 019 exist in case that migration was skipped
 ALTER TABLE results ADD COLUMN IF NOT EXISTS verification_hash TEXT;
@@ -49,7 +49,7 @@ ALTER TABLE results DROP CONSTRAINT IF EXISTS results_source_type_check;
 
 ALTER TABLE results
   ADD CONSTRAINT results_source_type_check
-  CHECK (source_type IN ('live_ble', 'manual_staff', 'legacy_csv'));
+  CHECK (source_type IN ('live_ble', 'manual', 'imported_csv'));
 
 -- Back-fill any rows that may have been inserted before the constraint with
 -- unexpected values — defensive only, should be a no-op on a healthy DB.
@@ -59,9 +59,9 @@ ALTER TABLE results
 -- (Use only columns guaranteed to exist across all schema versions)
 -- ---------------------------------------------------------------------------
 
-CREATE INDEX IF NOT EXISTS idx_results_legacy_csv
+CREATE INDEX IF NOT EXISTS idx_results_imported_csv
     ON results (event_id, athlete_id, drill_type)
-    WHERE source_type = 'legacy_csv';
+    WHERE source_type = 'imported_csv';
 
 -- ---------------------------------------------------------------------------
 -- 3. Partial index: non-legacy rows (supports Realtime filter exclusion)
@@ -69,6 +69,6 @@ CREATE INDEX IF NOT EXISTS idx_results_legacy_csv
 
 CREATE INDEX IF NOT EXISTS idx_results_non_legacy
     ON results (event_id)
-    WHERE source_type != 'legacy_csv';
+    WHERE source_type != 'imported_csv';
 
 COMMIT;

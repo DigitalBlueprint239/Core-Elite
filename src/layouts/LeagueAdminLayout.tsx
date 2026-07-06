@@ -92,7 +92,7 @@ export default function LeagueAdminLayout() {
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        <p className="px-3 pb-2 text-[9px] font-bold uppercase tracking-[0.2em] text-zinc-600">Navigation</p>
+        <p className="px-3 pb-2 text-[9px] font-bold uppercase tracking-[0.2em] text-zinc-400">Navigation</p>
         {NAV_ITEMS.map(item => (
           <SidebarLink key={item.to} item={item} onClick={() => setMobileOpen(false)} />
         ))}
@@ -101,7 +101,7 @@ export default function LeagueAdminLayout() {
       {/* Session footer */}
       <div className="px-3 py-4 border-t border-zinc-800 space-y-1">
         <div className="px-3 py-2">
-          <p className="text-[9px] font-bold uppercase tracking-widest text-zinc-600 mb-0.5">Signed in as</p>
+          <p className="text-[9px] font-bold uppercase tracking-widest text-zinc-400 mb-0.5">Signed in as</p>
           <p className="text-zinc-300 text-xs font-bold truncate">League Commissioner</p>
           <div className="flex items-center gap-1.5 mt-1">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
@@ -170,7 +170,7 @@ export default function LeagueAdminLayout() {
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Live Data</span>
             </div>
-            <div className="text-[10px] font-mono text-zinc-600 tabular-nums">
+            <div className="text-[10px] font-mono text-zinc-400 tabular-nums">
               {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} LOCAL
             </div>
           </div>

@@ -1,11 +1,22 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Station, Athlete } from '../lib/types';
-import { QRScanner } from '../components/QRScanner';
+
+// QRScanner pulls in html5-qrcode (~85KB min). React.lazy + Suspense so the
+// scanner chunk is fetched only when this route mounts AND the operator opens
+// a scan-mode panel. The fallback below is intentionally light — scanner panel
+// is always inside a card that already has a header, so a small placeholder
+// avoids a layout-shift while the chunk arrives.
+const QRScanner = lazy(() => import('../components/QRScanner'));
+const ScannerFallback = () => (
+  <div className="w-full max-w-md mx-auto h-[260px] rounded-xl border-2 border-zinc-800 bg-black flex items-center justify-center text-zinc-500 text-xs font-mono uppercase tracking-widest">
+    Initializing scanner…
+  </div>
+);
 import { addToOutbox, getCachedAthlete, cacheAthlete, saveStationQueue, loadStationQueue, ResultOutboxPayload } from '../lib/offline';
 import { seedOverridePin, verifyOverridePin, isOverridePinSeeded } from '../lib/overridePin';
-import { useOfflineSync } from '../hooks/useOfflineSync';
+import { useSyncContext } from '../contexts/SyncProvider';
 import { motion, AnimatePresence } from 'motion/react';
 import { QrCode, User, Send, RefreshCw, ChevronLeft, AlertCircle, CheckCircle2, Wifi, WifiOff, History, AlertTriangle, Zap, ListOrdered, X, ShieldAlert, ArrowLeft, LayoutGrid, Delete } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
@@ -68,7 +79,7 @@ function NumericKeypad({
 export default function StationMode() {
   const { stationId } = useParams();
   const navigate = useNavigate();
-  const { isOnline, pendingCount, requiresForceSync, lastSyncTime, syncOutbox, forceSync, updatePendingCount, duplicateChallenges, resolveDuplicateChallenge } = useOfflineSync();
+  const { isOnline, pendingCount, requiresForceSync, lastSyncTime, syncOutbox, forceSync, updatePendingCount, duplicateChallenges, resolveDuplicateChallenge } = useSyncContext();
 
   const [station, setStation] = useState<Station | null>(null);
   const [athlete, setAthlete] = useState<Athlete | any>(null);
@@ -845,7 +856,7 @@ export default function StationMode() {
                   <p className="text-zinc-400 text-xs">Athletes will appear below</p>
                 </div>
               </div>
-              <QRScanner onScan={handleScan} />
+              <Suspense fallback={<ScannerFallback />}><QRScanner onScan={handleScan} /></Suspense>
             </div>
 
             <div className="space-y-3">
@@ -918,7 +929,7 @@ export default function StationMode() {
                   <p className="text-zinc-400 text-xs">Ready for next participant</p>
                 </div>
               </div>
-              <QRScanner onScan={handleScan} />
+              <Suspense fallback={<ScannerFallback />}><QRScanner onScan={handleScan} /></Suspense>
             </div>
 
           </motion.div>

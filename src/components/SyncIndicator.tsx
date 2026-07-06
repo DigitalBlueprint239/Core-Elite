@@ -1,6 +1,6 @@
 import React from 'react';
 import { Wifi, WifiOff, RefreshCw } from 'lucide-react';
-import { useOfflineSync } from '../hooks/useOfflineSync';
+import { useSyncContext } from '../contexts/SyncProvider';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -9,7 +9,7 @@ function cn(...inputs: ClassValue[]) {
 }
 
 export const SyncIndicator: React.FC = () => {
-  const { isOnline, pendingCount, lastSyncTime, syncOutbox } = useOfflineSync();
+  const { isOnline, pendingCount, lastSyncTime, syncOutbox } = useSyncContext();
 
   return (
     <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2">

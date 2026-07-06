@@ -9,6 +9,7 @@ import { SyncIndicator } from './components/SyncIndicator';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { RouteGuard } from './components/RouteGuard';
 import { ThemeProvider } from './components/ThemeProvider';
+import { SyncProvider } from './contexts/SyncProvider';
 import { reportNav } from './lib/apm';
 
 // APM route-timing beacon — mounts once inside <BrowserRouter> and fires a
@@ -75,6 +76,7 @@ export default function App() {
       <BrowserRouter>
         <RouteTiming />
         <ThemeProvider>
+        <SyncProvider>
         <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900">
           <Suspense fallback={
             <div className="flex items-center justify-center min-h-screen">
@@ -176,6 +178,7 @@ export default function App() {
           </Suspense>
           <SyncIndicator />
         </div>
+        </SyncProvider>
         </ThemeProvider>
       </BrowserRouter>
     </ErrorBoundary>

@@ -52,7 +52,7 @@ function MetricCard({
     <div className="bg-zinc-900 border border-zinc-800 rounded-md p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <span className="text-[9px] font-bold uppercase tracking-[0.18em] text-zinc-500">{label}</span>
-        {icon && <span className="text-zinc-600">{icon}</span>}
+        {icon && <span className="text-zinc-400">{icon}</span>}
       </div>
       <div>
         <p className={`font-mono font-black text-3xl tabular-nums leading-none ${color}`}>{value}</p>
@@ -258,7 +258,7 @@ export default function LeagueDashboard() {
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
             Live Event Matrix
           </h2>
-          <span className="text-[9px] font-mono text-zinc-600 uppercase tracking-widest">
+          <span className="text-[9px] font-mono text-zinc-400 uppercase tracking-widest">
             {liveEvents.length} event{liveEvents.length !== 1 ? 's' : ''} active
           </span>
         </div>
@@ -267,18 +267,18 @@ export default function LeagueDashboard() {
           {/* Table header */}
           <div className="grid grid-cols-[2fr_1fr_1fr_1.5fr_1fr_1fr] gap-0 border-b border-zinc-800">
             {['Event / Location', 'Date', 'Check-in', 'Progress', 'Stations', 'Sync Status'].map(h => (
-              <div key={h} className="px-3 py-2 text-[9px] font-bold uppercase tracking-[0.15em] text-zinc-600">{h}</div>
+              <div key={h} className="px-3 py-2 text-[9px] font-bold uppercase tracking-[0.15em] text-zinc-400">{h}</div>
             ))}
           </div>
 
           {loading && (
-            <div className="px-3 py-8 text-center text-[10px] font-mono text-zinc-600 uppercase tracking-widest animate-pulse">
+            <div className="px-3 py-8 text-center text-[10px] font-mono text-zinc-400 uppercase tracking-widest animate-pulse">
               Querying live event data...
             </div>
           )}
 
           {!loading && liveEvents.length === 0 && (
-            <div className="px-3 py-8 text-center text-[10px] font-mono text-zinc-600 uppercase tracking-widest">
+            <div className="px-3 py-8 text-center text-[10px] font-mono text-zinc-400 uppercase tracking-widest">
               No active events today
             </div>
           )}
@@ -310,7 +310,7 @@ export default function LeagueDashboard() {
                 <div className="px-3 py-3 flex items-center">
                   <span className="text-xs font-mono tabular-nums text-zinc-200">
                     <span className="text-white font-bold">{ev.checked_in}</span>
-                    <span className="text-zinc-600">/{ev.athlete_count}</span>
+                    <span className="text-zinc-400">/{ev.athlete_count}</span>
                   </span>
                 </div>
 

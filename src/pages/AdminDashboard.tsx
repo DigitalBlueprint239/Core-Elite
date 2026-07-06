@@ -312,11 +312,11 @@ export default function AdminDashboard() {
           <div className="flex items-center gap-3">
             <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Live Station Health</p>
             <div className="flex-1 h-px bg-zinc-800" />
-            <p className="text-[10px] font-mono text-zinc-600">{stations.length} stations</p>
+            <p className="text-[10px] font-mono text-zinc-400">{stations.length} stations</p>
           </div>
 
           {stations.length === 0 ? (
-            <p className="text-xs text-zinc-600 font-medium">No stations configured.</p>
+            <p className="text-xs text-zinc-400 font-medium">No stations configured.</p>
           ) : (
             <div className="flex flex-wrap gap-2">
               {stations.map(station => {
@@ -402,7 +402,7 @@ export default function AdminDashboard() {
               <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Athlete Ledger</p>
               <div className="h-4 w-px bg-zinc-800" />
               {!loading && (
-                <p className="font-mono text-[10px] text-zinc-600">
+                <p className="font-mono text-[10px] text-zinc-400">
                   {filteredAndSortedAthletes.length}<span className="text-zinc-700">/{athletes.length}</span>
                 </p>
               )}
@@ -411,7 +411,7 @@ export default function AdminDashboard() {
             <div className="flex flex-wrap items-center gap-2">
               {/* Search */}
               <div className="relative">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600" />
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
                 <input
                   type="text"
                   placeholder="Search athletes..."
@@ -476,7 +476,7 @@ export default function AdminDashboard() {
                 {/* ── Header ─────────────────────────────────────────────── */}
                 <thead>
                   <tr className="bg-zinc-950 border-b border-zinc-800">
-                    <th className="px-5 py-3.5 text-[10px] font-black uppercase tracking-widest text-zinc-600">
+                    <th className="px-5 py-3.5 text-[10px] font-black uppercase tracking-widest text-zinc-400">
                       #
                     </th>
                     <th className="px-5 py-3.5">
@@ -488,7 +488,7 @@ export default function AdminDashboard() {
                         onClick={() => handleSort('name')}
                       />
                     </th>
-                    <th className="px-5 py-3.5 text-[10px] font-black uppercase tracking-widest text-zinc-600">
+                    <th className="px-5 py-3.5 text-[10px] font-black uppercase tracking-widest text-zinc-400">
                       Pos
                     </th>
                     <th className="px-5 py-3.5">
@@ -509,7 +509,7 @@ export default function AdminDashboard() {
                         onClick={() => handleSort('score')}
                       />
                     </th>
-                    <th className="px-5 py-3.5 text-[10px] font-black uppercase tracking-widest text-zinc-600">
+                    <th className="px-5 py-3.5 text-[10px] font-black uppercase tracking-widest text-zinc-400">
                       Status
                     </th>
                   </tr>
@@ -520,7 +520,7 @@ export default function AdminDashboard() {
                   {paginatedAthletes.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="px-6 py-16 text-center">
-                        <p className="text-sm text-zinc-600 font-medium">No athletes match the current filters.</p>
+                        <p className="text-sm text-zinc-400 font-medium">No athletes match the current filters.</p>
                       </td>
                     </tr>
                   ) : (
@@ -543,7 +543,7 @@ export default function AdminDashboard() {
                           {/* Athlete name + email */}
                           <td className="px-5 py-4">
                             <div className="font-bold text-sm text-white">{athlete.first_name} {athlete.last_name}</div>
-                            <div className="font-mono text-[10px] text-zinc-600 mt-0.5">{athlete.parent_email}</div>
+                            <div className="font-mono text-[10px] text-zinc-400 mt-0.5">{athlete.parent_email}</div>
                           </td>
 
                           {/* Position */}
@@ -572,7 +572,7 @@ export default function AdminDashboard() {
                           <td className="px-5 py-4">
                             {score !== null ? (
                               <span className={`font-mono font-black text-lg tabular-nums ${scoreColor(score)}`}>
-                                {score}<span className="text-[11px] font-normal text-zinc-600">th</span>
+                                {score}<span className="text-[11px] font-normal text-zinc-400">th</span>
                               </span>
                             ) : (
                               <span className="font-mono text-zinc-700 text-sm">—</span>
@@ -610,7 +610,7 @@ export default function AdminDashboard() {
           {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex items-center justify-between px-1">
-              <p className="font-mono text-[10px] text-zinc-600">
+              <p className="font-mono text-[10px] text-zinc-400">
                 {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, filteredAndSortedAthletes.length)}
                 <span className="text-zinc-700"> of {filteredAndSortedAthletes.length}</span>
               </p>
@@ -663,7 +663,7 @@ function SortHeader({
     <button
       onClick={onClick}
       className={`flex items-center gap-1 text-[10px] font-black uppercase tracking-widest transition-colors ${
-        active ? 'text-[#c8a200]' : 'text-zinc-600 hover:text-zinc-300'
+        active ? 'text-[#c8a200]' : 'text-zinc-400 hover:text-zinc-300'
       }`}
     >
       {label}
@@ -737,7 +737,7 @@ function StatCard({ icon, label, value, accent }: {
       <div className={`h-0.5 ${ACCENT_TOP[accent]}`} />
       <div className="p-5 space-y-3">
         <div className="flex items-center justify-between">
-          <p className="text-[9px] font-black uppercase tracking-widest text-zinc-600">{label}</p>
+          <p className="text-[9px] font-black uppercase tracking-widest text-zinc-400">{label}</p>
           <span className={`${ACCENT_ICON[accent]} opacity-70`}>
             {React.cloneElement(icon as any, { className: 'w-4 h-4' })}
           </span>

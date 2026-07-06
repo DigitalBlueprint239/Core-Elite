@@ -408,12 +408,12 @@ export default function EnterpriseImporter() {
               Unverified Data Only
             </span>
           </div>
-          <p className="text-zinc-600 text-[10px] font-black uppercase tracking-[0.2em]">
+          <p className="text-zinc-400 text-[10px] font-black uppercase tracking-[0.2em]">
             Legacy CSV Ingestion — Mission N · All records tagged is_hardware_verified = false
           </p>
         </div>
         {fileName && (
-          <button onClick={reset} className="flex items-center gap-1.5 text-xs text-zinc-600 hover:text-white transition-colors mt-1">
+          <button onClick={reset} className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white transition-colors mt-1">
             <X className="w-4 h-4" /> Clear
           </button>
         )}
@@ -446,13 +446,13 @@ export default function EnterpriseImporter() {
                   onChange={onFileInput}
                 />
                 <div className={`p-4 rounded-2xl border transition-colors ${isDragOver ? 'border-[#c8a200]/30 bg-[#c8a200]/10' : 'border-zinc-800 bg-zinc-900'}`}>
-                  <Upload className={`w-10 h-10 ${isDragOver ? 'text-[#c8a200]' : 'text-zinc-600'}`} />
+                  <Upload className={`w-10 h-10 ${isDragOver ? 'text-[#c8a200]' : 'text-zinc-400'}`} />
                 </div>
                 <div className="text-center pointer-events-none">
                   <p className="text-white font-black text-sm">
                     {isDragOver ? 'Release to load' : 'Drop athlete CSV here or click to browse'}
                   </p>
-                  <p className="text-zinc-600 text-xs mt-1 font-mono">
+                  <p className="text-zinc-400 text-xs mt-1 font-mono">
                     Required: First Name · Last Name · DOB · at least one drill column
                   </p>
                 </div>
@@ -462,7 +462,7 @@ export default function EnterpriseImporter() {
                 <div className="flex items-start gap-3 bg-red-500/10 border border-red-500/20 rounded-xl p-4">
                   <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
                   <p className="text-red-300 text-xs font-mono whitespace-pre-wrap">{errorMsg}</p>
-                  <button onClick={reset} className="ml-auto text-zinc-600 hover:text-white shrink-0">
+                  <button onClick={reset} className="ml-auto text-zinc-400 hover:text-white shrink-0">
                     <X className="w-4 h-4" />
                   </button>
                 </div>
@@ -480,7 +480,7 @@ export default function EnterpriseImporter() {
                       Paste any messy roster — Claude normalizes it into the strict importer schema.
                     </p>
                   </div>
-                  <span className="text-[9px] text-zinc-600 font-mono uppercase tracking-widest hidden sm:inline">
+                  <span className="text-[9px] text-zinc-400 font-mono uppercase tracking-widest hidden sm:inline">
                     Mission Z
                   </span>
                 </summary>
@@ -501,13 +501,13 @@ export default function EnterpriseImporter() {
                   />
 
                   <div className="flex items-center justify-between gap-3 flex-wrap">
-                    <p className="text-[10px] text-zinc-600 font-mono">
+                    <p className="text-[10px] text-zinc-400 font-mono">
                       {cleanseRaw.length.toLocaleString()} chars · max 200,000
                     </p>
                     <button
                       onClick={handleCleanse}
                       disabled={cleansing || cleanseRaw.trim().length === 0}
-                      className="inline-flex items-center gap-2 px-4 py-2 bg-[#c8a200] hover:bg-[#e0b900] disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-black font-black text-xs uppercase tracking-[0.15em] rounded-xl transition-colors"
+                      className="inline-flex items-center gap-2 px-4 py-2 bg-[#c8a200] hover:bg-[#e0b900] disabled:bg-zinc-800 disabled:text-zinc-400 disabled:cursor-not-allowed text-black font-black text-xs uppercase tracking-[0.15em] rounded-xl transition-colors"
                     >
                       {cleansing ? (
                         <><Loader2 className="w-3.5 h-3.5 animate-spin" />Cleansing…</>
@@ -535,7 +535,7 @@ export default function EnterpriseImporter() {
                     <div key={key} className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs ${
                       required
                         ? 'bg-zinc-950 border-zinc-700 text-zinc-300'
-                        : 'bg-zinc-950 border-zinc-800 text-zinc-600'
+                        : 'bg-zinc-950 border-zinc-800 text-zinc-400'
                     }`}>
                       <span className={required ? 'text-[#c8a200] font-black' : 'text-zinc-700'}>
                         {required ? '✓' : '·'}
@@ -565,7 +565,7 @@ export default function EnterpriseImporter() {
                   <ul className="space-y-1 max-h-32 overflow-auto">
                     {cleanseWarnings.map((w, i) => (
                       <li key={i} className="text-[11px] text-amber-200 font-mono flex gap-2">
-                        <span className="text-zinc-600 shrink-0">·</span>
+                        <span className="text-zinc-400 shrink-0">·</span>
                         <span className="break-words">{w}</span>
                       </li>
                     ))}
@@ -578,7 +578,7 @@ export default function EnterpriseImporter() {
                   <FileText className="w-5 h-5 text-[#c8a200] shrink-0" />
                   <div className="min-w-0">
                     <p className="text-white text-sm font-bold truncate">{fileName}</p>
-                    <p className="text-zinc-600 text-xs font-mono mt-0.5">
+                    <p className="text-zinc-400 text-xs font-mono mt-0.5">
                       {rawRows.length.toLocaleString()} rows · {headers.length} columns
                     </p>
                   </div>
@@ -596,7 +596,7 @@ export default function EnterpriseImporter() {
                             ? 'bg-emerald-950/40 border-emerald-800/40 text-emerald-400'
                             : required
                               ? 'bg-red-950/40 border-red-800/40 text-red-400'
-                              : 'bg-zinc-950 border-zinc-800 text-zinc-600'
+                              : 'bg-zinc-950 border-zinc-800 text-zinc-400'
                         }`}
                       >
                         {mapped
@@ -632,7 +632,7 @@ export default function EnterpriseImporter() {
                       <thead>
                         <tr className="border-b border-zinc-800">
                           {headers.map(h => (
-                            <th key={h} className="px-4 py-2.5 text-left text-[10px] font-black uppercase tracking-wide text-zinc-600 whitespace-nowrap">
+                            <th key={h} className="px-4 py-2.5 text-left text-[10px] font-black uppercase tracking-wide text-zinc-400 whitespace-nowrap">
                               {h}
                             </th>
                           ))}
@@ -670,8 +670,8 @@ export default function EnterpriseImporter() {
                 </div>
                 <div>
                   <p className="text-white font-black">Batch Import Complete</p>
-                  <p className="text-zinc-600 text-xs font-mono mt-0.5">
-                    All records → is_hardware_verified = false · source_type = legacy_csv
+                  <p className="text-zinc-400 text-xs font-mono mt-0.5">
+                    All records → is_hardware_verified = false · source_type = imported_csv
                   </p>
                 </div>
               </div>
@@ -684,7 +684,7 @@ export default function EnterpriseImporter() {
                   ['Errors',           importResult.errors?.length ?? 0,   importResult.errors?.length > 0 ? 'text-red-400' : 'text-zinc-700'],
                 ] as const).map(([label, val, color]) => (
                   <div key={label} className="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
-                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600 mb-1">{label}</p>
+                    <p className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400 mb-1">{label}</p>
                     <p className={`text-3xl font-black tabular-nums ${color}`}>{val}</p>
                   </div>
                 ))}
@@ -741,7 +741,7 @@ export default function EnterpriseImporter() {
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
             <Label>Target Event</Label>
             {events.length === 0 ? (
-              <p className="text-zinc-600 text-xs font-mono">Loading events…</p>
+              <p className="text-zinc-400 text-xs font-mono">Loading events…</p>
             ) : (
               <select
                 value={selectedEvent}
@@ -794,7 +794,7 @@ export default function EnterpriseImporter() {
                 'Legacy data is excluded from college exports and ARMS scout reports.',
                 'Duplicate athletes matched by name or email within the same event.',
                 'New athlete stubs created with placeholder contact info.',
-                'source_type = legacy_csv is applied to every result row.',
+                'source_type = imported_csv is applied to every result row.',
               ].map((note, i) => (
                 <li key={i} className="flex gap-2 text-[10px] text-amber-200/35">
                   <span className="text-amber-600 shrink-0 mt-px">·</span>

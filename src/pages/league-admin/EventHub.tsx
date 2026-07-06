@@ -63,12 +63,12 @@ export default function EventHub() {
       <div className="bg-zinc-900 border border-zinc-800 rounded-md overflow-hidden">
         <div className="grid grid-cols-[2fr_1fr_1fr_1fr_0.5fr] border-b border-zinc-800">
           {['Event Name', 'Date', 'Location', 'Athletes', 'Status'].map(h => (
-            <div key={h} className="px-4 py-2.5 text-[9px] font-bold uppercase tracking-[0.15em] text-zinc-600">{h}</div>
+            <div key={h} className="px-4 py-2.5 text-[9px] font-bold uppercase tracking-[0.15em] text-zinc-400">{h}</div>
           ))}
         </div>
 
         {loading && (
-          <div className="py-10 text-center text-[10px] font-mono text-zinc-600 uppercase tracking-widest animate-pulse">
+          <div className="py-10 text-center text-[10px] font-mono text-zinc-400 uppercase tracking-widest animate-pulse">
             Loading events...
           </div>
         )}
@@ -79,7 +79,7 @@ export default function EventHub() {
             className={`grid grid-cols-[2fr_1fr_1fr_1fr_0.5fr] border-b border-zinc-800/60 hover:bg-zinc-800/40 transition-colors ${idx % 2 === 1 ? 'bg-zinc-900/40' : ''}`}
           >
             <div className="px-4 py-3 flex items-center gap-2">
-              <CalendarDays className="w-3.5 h-3.5 text-zinc-600 shrink-0" />
+              <CalendarDays className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
               <span className="text-xs font-bold text-zinc-100 truncate">{ev.name}</span>
             </div>
             <div className="px-4 py-3 flex items-center">
@@ -100,7 +100,7 @@ export default function EventHub() {
         ))}
 
         {!loading && events.length === 0 && (
-          <div className="py-10 text-center text-[10px] font-mono text-zinc-600 uppercase tracking-widest">No events found</div>
+          <div className="py-10 text-center text-[10px] font-mono text-zinc-400 uppercase tracking-widest">No events found</div>
         )}
       </div>
     </div>

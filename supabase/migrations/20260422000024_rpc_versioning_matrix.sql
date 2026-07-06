@@ -157,7 +157,7 @@ BEGIN
     v_attempt_number   := COALESCE((p_payload->>'attempt_number')::INT, 1);
     v_meta             := COALESCE(p_payload->'meta', '{}'::jsonb);
     v_device_timestamp := COALESCE((p_payload->>'device_timestamp')::BIGINT, 0);
-    v_source_type      := COALESCE(p_payload->>'source_type', 'manual_staff');
+    v_source_type      := COALESCE(p_payload->>'source_type', 'manual');
     v_session_id       := p_payload->>'session_id';   -- may be NULL
 
     -- Gate 0: Authentication (same as v6)
@@ -453,7 +453,7 @@ CREATE OR REPLACE FUNCTION submit_result_secure(
     p_attempt_number   INT     DEFAULT 1,
     p_meta             JSONB   DEFAULT '{}'::jsonb,
     p_device_timestamp BIGINT  DEFAULT 0,
-    p_source_type      TEXT    DEFAULT 'manual_staff',
+    p_source_type      TEXT    DEFAULT 'manual',
     p_session_id       TEXT    DEFAULT NULL
 ) RETURNS JSONB
 LANGUAGE plpgsql

@@ -221,7 +221,7 @@ export default function HardwareStandby({ onRetry }: HardwareStandbyProps) {
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_5px_rgba(52,211,153,0.8)]" />
             <span className="font-mono text-[9px] text-emerald-500 uppercase tracking-widest">SYS ONLINE</span>
           </div>
-          <span className="font-mono text-[10px] text-zinc-600 tabular-nums">{timeStr}</span>
+          <span className="font-mono text-[10px] text-zinc-400 tabular-nums">{timeStr}</span>
         </div>
       </div>
 
@@ -240,7 +240,7 @@ export default function HardwareStandby({ onRetry }: HardwareStandbyProps) {
           <RadarDisc sweeping={sweeping} />
 
           {/* Scanning label */}
-          <div className="flex items-center gap-2 font-mono text-[10px] text-zinc-600 uppercase tracking-widest">
+          <div className="flex items-center gap-2 font-mono text-[10px] text-zinc-400 uppercase tracking-widest">
             <Radio className={`w-3 h-3 ${sweeping ? 'text-[#c8a200] animate-pulse' : 'text-zinc-700'}`} />
             {sweeping
               ? 'ACTIVE SWEEP IN PROGRESS...'
@@ -263,7 +263,7 @@ export default function HardwareStandby({ onRetry }: HardwareStandbyProps) {
 
           {/* Section label */}
           <div className="flex items-center gap-3">
-            <p className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-zinc-600">
+            <p className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-zinc-400">
               SYSTEM DIAGNOSTIC LOG
             </p>
             <div className="flex-1 h-px bg-zinc-800/60" />
@@ -293,7 +293,7 @@ export default function HardwareStandby({ onRetry }: HardwareStandbyProps) {
                 <div
                   key={i}
                   className={`font-mono text-[10px] ${
-                    i === sweepLines.length - 1 ? 'text-[#c8a200]' : 'text-zinc-600'
+                    i === sweepLines.length - 1 ? 'text-[#c8a200]' : 'text-zinc-400'
                   }`}
                 >
                   {line}

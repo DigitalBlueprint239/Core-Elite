@@ -13,16 +13,16 @@
 --
 --   2. results.band_id / station_id — made nullable.
 --      Legacy imports have no band or station context. NULL is only valid when
---      source_type = 'legacy_csv'. Enforced by CHECK constraint below.
+--      source_type = 'imported_csv'. Enforced by CHECK constraint below.
 --
 --   3. submit_result_secure v7 — adds is_hardware_verified to INSERT.
---      live_ble → true. manual_staff / legacy_csv → false.
+--      live_ble → true. manual / imported_csv → false.
 --
 --   4. import_legacy_results_batch(p_event_id UUID, p_records JSONB)
 --      Batch RPC for the EnterpriseImporter UI. Deduplicates athletes by
 --      (first_name, last_name) and parent_email within the event, creates stubs
 --      for unknowns, inserts results with is_hardware_verified = false and
---      source_type = 'legacy_csv'. Returns summary JSONB.
+--      source_type = 'imported_csv'. Returns summary JSONB.
 --
 -- IDEMPOTENCY: Safe to run multiple times (IF NOT EXISTS / CREATE OR REPLACE).
 -- =============================================================================
@@ -59,7 +59,7 @@ ALTER TABLE results DROP CONSTRAINT IF EXISTS results_legacy_nullable_check;
 ALTER TABLE results
   ADD CONSTRAINT results_legacy_nullable_check
   CHECK (
-    source_type = 'legacy_csv'
+    source_type = 'imported_csv'
     OR (band_id IS NOT NULL AND station_id IS NOT NULL)
   );
 
@@ -68,7 +68,7 @@ ALTER TABLE results
 --
 -- Identical to v6 (migration 019) except is_hardware_verified added to INSERT.
 -- is_hardware_verified = (p_source_type = 'live_ble') — evaluated at write time.
--- All existing callers get false by default (p_source_type defaults 'manual_staff').
+-- All existing callers get false by default (p_source_type defaults 'manual').
 -- ---------------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION submit_result_secure(
@@ -82,7 +82,7 @@ CREATE OR REPLACE FUNCTION submit_result_secure(
     p_attempt_number   INT     DEFAULT 1,
     p_meta             JSONB   DEFAULT '{}'::jsonb,
     p_device_timestamp BIGINT  DEFAULT 0,
-    p_source_type      TEXT    DEFAULT 'manual_staff',
+    p_source_type      TEXT    DEFAULT 'manual',
     p_session_id       TEXT    DEFAULT NULL
 ) RETURNS JSONB
 LANGUAGE plpgsql
@@ -187,7 +187,7 @@ $$;
 --
 -- Inserted results always have:
 --   is_hardware_verified = false   (cannot be promoted — permanent)
---   source_type          = 'legacy_csv'
+--   source_type          = 'imported_csv'
 --   band_id              = NULL    (no station context for legacy data)
 --   station_id           = NULL
 -- ---------------------------------------------------------------------------
@@ -306,7 +306,7 @@ BEGIN
             ) VALUES (
                 gen_random_uuid(), p_event_id, v_athlete_id,
                 'forty', v_drill_val, 1,
-                'legacy_csv', false, 'clean', now(),
+                'imported_csv', false, 'clean', now(),
                 jsonb_build_object('import_source', 'enterprise_importer', 'importer_email', v_email)
             );
             v_count_inserted := v_count_inserted + 1;
@@ -324,7 +324,7 @@ BEGIN
             ) VALUES (
                 gen_random_uuid(), p_event_id, v_athlete_id,
                 'shuttle_5_10_5', v_drill_val, 1,
-                'legacy_csv', false, 'clean', now(),
+                'imported_csv', false, 'clean', now(),
                 jsonb_build_object('import_source', 'enterprise_importer', 'importer_email', v_email)
             );
             v_count_inserted := v_count_inserted + 1;
@@ -342,7 +342,7 @@ BEGIN
             ) VALUES (
                 gen_random_uuid(), p_event_id, v_athlete_id,
                 'vertical', v_drill_val, 1,
-                'legacy_csv', false, 'clean', now(),
+                'imported_csv', false, 'clean', now(),
                 jsonb_build_object('import_source', 'enterprise_importer', 'importer_email', v_email)
             );
             v_count_inserted := v_count_inserted + 1;
@@ -360,7 +360,7 @@ BEGIN
             ) VALUES (
                 gen_random_uuid(), p_event_id, v_athlete_id,
                 'broad', v_drill_val, 1,
-                'legacy_csv', false, 'clean', now(),
+                'imported_csv', false, 'clean', now(),
                 jsonb_build_object('import_source', 'enterprise_importer', 'importer_email', v_email)
             );
             v_count_inserted := v_count_inserted + 1;

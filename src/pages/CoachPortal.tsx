@@ -1,15 +1,12 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { motion, AnimatePresence } from 'motion/react';
-import {
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  Radar,
-  ResponsiveContainer,
-  Tooltip,
-} from 'recharts';
+
+// recharts (~120KB min) is split into its own Vite chunk and only loaded when
+// the radar chart is actually rendered (compare-mode + ≥2 athletes selected).
+const CoachRadarChart = lazy(() => import('../components/CoachRadarChart'));
+import type { CoachRadarDatum } from '../components/CoachRadarChart';
 import {
   Trophy,
   Users,
@@ -132,10 +129,10 @@ function ConsistencyLabel({ attempts }: { attempts: ResultRow[] }) {
 const RADAR_DRILLS  = ['forty', 'ten_split', 'shuttle_5_10_5', 'vertical', 'broad'];
 const RADAR_COLORS  = ['#c8a200', '#059669', '#3b82f6', '#f59e0b', '#8b5cf6'];
 
-function buildRadarData(compareAthletes: AthleteRow[]) {
+function buildRadarData(compareAthletes: AthleteRow[]): CoachRadarDatum[] {
   return RADAR_DRILLS.map(drillId => {
     const drill = DRILL_CATALOG.find(d => d.id === drillId);
-    const entry: Record<string, unknown> = {
+    const entry: CoachRadarDatum = {
       drill: drill?.label.replace(' Dash', '').replace('-Yard', 'yd') ?? drillId,
     };
     compareAthletes.forEach((a, i) => {
@@ -547,7 +544,7 @@ export default function CoachPortal() {
                   {/* Min avg percentile */}
                   <div className="space-y-1">
                     <label className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
-                      Min Avg Pct <span className="text-zinc-600 normal-case font-medium">({minPct}th+)</span>
+                      Min Avg Pct <span className="text-zinc-400 normal-case font-medium">({minPct}th+)</span>
                     </label>
                     <input
                       type="range"
@@ -916,7 +913,7 @@ export default function CoachPortal() {
                               {a.avgPct}<span className="text-xs font-normal text-zinc-400">th</span>
                             </span>
                           ) : (
-                            <span className="text-zinc-600 text-xs">—</span>
+                            <span className="text-zinc-400 text-xs">—</span>
                           )}
                         </td>
                       ))}
@@ -931,30 +928,17 @@ export default function CoachPortal() {
                   Percentile Radar — BES Drills
                 </p>
                 <div className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <RadarChart data={buildRadarData(compareAthletes)}>
-                      <PolarGrid stroke="#e4e4e7" />
-                      <PolarAngleAxis
-                        dataKey="drill"
-                        tick={{ fontSize: 11, fontWeight: 700, fill: '#71717a' }}
-                      />
-                      <Tooltip
-                        formatter={(value: number) => [`${value}th percentile`]}
-                        contentStyle={{ borderRadius: '12px', border: '1px solid #e4e4e7', fontSize: 12 }}
-                      />
-                      {compareAthletes.map((athlete, i) => (
-                        <Radar
-                          key={athlete.id}
-                          name={`${athlete.first_name} ${athlete.last_name}`}
-                          dataKey={`athlete${i}`}
-                          stroke={RADAR_COLORS[i]}
-                          fill={RADAR_COLORS[i]}
-                          fillOpacity={0.15}
-                          strokeWidth={2}
-                        />
-                      ))}
-                    </RadarChart>
-                  </ResponsiveContainer>
+                  <Suspense fallback={
+                    <div className="h-full flex items-center justify-center text-xs text-zinc-400 font-mono uppercase tracking-widest">
+                      Loading chart…
+                    </div>
+                  }>
+                    <CoachRadarChart
+                      data={buildRadarData(compareAthletes)}
+                      athletes={compareAthletes}
+                      colors={RADAR_COLORS}
+                    />
+                  </Suspense>
                 </div>
               </div>
             </motion.div>

@@ -765,7 +765,7 @@ export default function VendorImport() {
             </p>
             <ul className="space-y-1">
               {[
-                'Rows are tagged source_type = legacy_csv and excluded from live dashboards.',
+                'Rows are tagged source_type = imported_csv and excluded from live dashboards.',
                 'Import is idempotent — re-uploading the same file is safe.',
                 'Athletes not found by name will be created with placeholder contact info.',
                 'This action cannot be undone from the UI. Use Supabase Studio to void rows.',

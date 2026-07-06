@@ -308,8 +308,8 @@ function useLiveCommandCenter(): CCState {
       });
 
     // ── Realtime subscription ─────────────────────────────────────────────
-    // Filter excludes legacy_csv imports so bulk historical uploads do not
-    // flood the live dashboard with synthetic station/band activity.
+    // Filter excludes imported_csv ingestions so bulk historical uploads do
+    // not flood the live dashboard with synthetic station/band activity.
     const channel = supabase
       .channel('lcc-results-v1')
       .on(
@@ -318,7 +318,7 @@ function useLiveCommandCenter(): CCState {
           event:  'INSERT',
           schema: 'public',
           table:  'results',
-          filter: 'source_type=neq.legacy_csv',
+          filter: 'source_type=neq.imported_csv',
         },
         (payload) => {
           dispatch({

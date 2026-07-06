@@ -14,13 +14,13 @@
 --   1. results.verification_hash TEXT (nullable)
 --      Populated by the generate-verified-export Edge Function.
 --      HMAC-SHA-256(VERIFICATION_SECRET, canonical_payload_string).
---      NULL = result has not been verified yet, or source_type = 'manual_staff'.
+--      NULL = result has not been verified yet, or source_type = 'manual'.
 --
---   2. results.source_type TEXT NOT NULL DEFAULT 'manual_staff'
+--   2. results.source_type TEXT NOT NULL DEFAULT 'manual'
 --      Set by the client at write time.
 --      'live_ble'     — result was captured via BLE hardware; eligible for
 --                       cryptographic verification.
---      'manual_staff' — result was entered manually; can never be
+--      'manual' — result was entered manually; can never be
 --                       hardware-verified; verification_hash remains NULL.
 --
 --   3. results.session_id TEXT (nullable)
@@ -40,7 +40,7 @@
 --      Also embedded in the verification hash payload.
 --
 --   6. submit_result_secure v6 — adds p_source_type and p_session_id params.
---      Existing callers without the new params get 'manual_staff' / NULL.
+--      Existing callers without the new params get 'manual' / NULL.
 --
 --   7. upsert_capture_telemetry_lww v2 — adds p_clock_offset_ms and p_rtt_ms.
 --      Existing callers default to NULL for both.
@@ -57,7 +57,7 @@ BEGIN;
 -- ---------------------------------------------------------------------------
 
 ALTER TABLE results ADD COLUMN IF NOT EXISTS verification_hash TEXT;
-ALTER TABLE results ADD COLUMN IF NOT EXISTS source_type       TEXT NOT NULL DEFAULT 'manual_staff';
+ALTER TABLE results ADD COLUMN IF NOT EXISTS source_type       TEXT NOT NULL DEFAULT 'manual';
 ALTER TABLE results ADD COLUMN IF NOT EXISTS session_id        TEXT;
 
 -- Check constraint: only valid source types
@@ -69,7 +69,7 @@ BEGIN
     ) THEN
         ALTER TABLE results
           ADD CONSTRAINT results_source_type_check
-          CHECK (source_type IN ('live_ble', 'manual_staff'));
+          CHECK (source_type IN ('live_ble', 'manual'));
     END IF;
 END $$;
 
@@ -77,7 +77,7 @@ END $$;
 -- If a result has a matching capture_telemetry row, it was hardware-captured.
 UPDATE results r
 SET    source_type = 'live_ble'
-WHERE  source_type = 'manual_staff'
+WHERE  source_type = 'manual'
   AND  EXISTS (
       SELECT 1 FROM capture_telemetry ct WHERE ct.result_id = r.id
   );
@@ -121,7 +121,7 @@ CREATE OR REPLACE FUNCTION submit_result_secure(
     p_attempt_number   INT     DEFAULT 1,
     p_meta             JSONB   DEFAULT '{}'::jsonb,
     p_device_timestamp BIGINT  DEFAULT 0,
-    p_source_type      TEXT    DEFAULT 'manual_staff',
+    p_source_type      TEXT    DEFAULT 'manual',
     p_session_id       TEXT    DEFAULT NULL
 ) RETURNS JSONB
 LANGUAGE plpgsql

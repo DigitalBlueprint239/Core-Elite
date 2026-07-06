@@ -35,10 +35,17 @@ export const resultSubmissionSchema = z.object({
 
 // ── Provenance discriminator ──────────────────────────────────────────────────
 //
+// Canonical vocabulary across the entire stack — TS / RPCs / DB CHECK / Edge
+// Functions / live filters all agree on these three values:
+//
+//   'manual'        — keyed in by staff (StationMode capture)
+//   'live_ble'      — captured by BLE timing hardware
+//   'imported_csv'  — bulk-ingested from a vendor CSV (process-vendor-import)
+//
 // Matches the CHECK constraint in migrations/007a_add_source_type.sql and the
 // p_source_type validation in submit_result_secure (hardening_migration.sql).
 // The OutboxItem result payload mandates this — see src/lib/offline.ts.
-export type SourceType = 'manual' | 'live_ble' | 'imported_csv' | 'webhook';
+export type SourceType = 'manual' | 'live_ble' | 'imported_csv';
 
 // ── Plan / billing types ──────────────────────────────────────────────────────
 export type ActivePlan = 'athlete_pro' | 'enterprise' | null;
