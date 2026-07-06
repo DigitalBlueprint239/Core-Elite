@@ -53,7 +53,8 @@
       "Skill(claude-api)",
       "Bash(deno --version)",
       "Bash(git check-ignore *)",
-      "Bash(sort -k5 -n -r)"
+      "Bash(sort -k5 -n -r)",
+      "Skill(schedule)"
     ]
   }
 }
